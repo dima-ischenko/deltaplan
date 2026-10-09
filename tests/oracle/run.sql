@@ -11,6 +11,8 @@ begin execute immediate 'drop package pkg_deltaplan_test'; exception when others
 /
 begin execute immediate 'drop package pkg_deltaplan'; exception when others then if sqlcode != -4043 then raise; end if; end;
 /
+begin execute immediate 'drop view deltaplan_keyset'; exception when others then if sqlcode != -942 then raise; end if; end;
+/
 begin execute immediate 'drop table deltaplan_batch purge'; exception when others then if sqlcode != -942 then raise; end if; end;
 /
 begin execute immediate 'drop table deltaplan_keys purge'; exception when others then if sqlcode != -942 then raise; end if; end;
@@ -72,6 +74,7 @@ create table inc_test_seen (
 );
 
 @@pkg_deltaplan_test.sql
+@@pkg_deltaplan_test_edges.sql
 
 declare
     l_errors number;
@@ -79,7 +82,7 @@ begin
     select count(*)
     into l_errors
     from user_errors
-    where name in ('PKG_DELTAPLAN', 'PKG_DELTAPLAN_TEST');
+    where name in ('PKG_DELTAPLAN', 'PKG_DELTAPLAN_TEST', 'PKG_DELTAPLAN_TEST_EDGES');
 
     if l_errors > 0 then
         raise_application_error(-20000, 'deltaplan did not compile, errors=' || l_errors);
@@ -88,4 +91,5 @@ end;
 /
 
 exec pkg_deltaplan_test.run
+exec pkg_deltaplan_test_edges.run
 exit

@@ -95,6 +95,21 @@ begin
                 s.last_order_id, s.cnt_completed, sysdate
             );
 
+        -- A captured customer with no remaining line items is absent from the
+        -- merge source. Delete that mart row or a full refresh will not have it.
+        delete from customer_metrics t
+        where exists (
+            select 1
+            from deltaplan_batch b
+            where b.pk_1 = to_char(t.customer_id)
+        )
+        and not exists (
+            select 1
+            from orders o
+            join order_items oi on oi.order_id = o.id
+            where o.customer_id = t.customer_id
+        );
+
         pkg_deltaplan.finish_batch;
     end loop;
 

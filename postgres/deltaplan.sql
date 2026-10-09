@@ -114,6 +114,14 @@ begin
 
     create index if not exists idx_deltaplan_keys_batch
         on deltaplan_keys (target_table, data_segment, batch_no, batch_done);
+
+    -- One row per business key. deltaplan_keys keeps a row per source so each
+    -- source has its own watermark; joining that table into an aggregate
+    -- multiplies the measures.
+    execute
+        'create or replace temp view deltaplan_keyset as
+            select distinct target_table, data_segment, pk_1, pk_2, pk_3
+            from deltaplan_keys';
 end;
 $$;
 
@@ -342,8 +350,14 @@ begin
       and source_table = l_source
       and data_segment = l_segment;
 
-    l_stored := coalesce(l_stored, timestamp '2000-01-01');
-    l_bound := l_stored - (l_lookback * interval '1 hour');
+    -- No stored watermark yet: every finite timestamp qualifies. Subtracting
+    -- lookback from the type minimum either does nothing or overflows, so the
+    -- first bound is -infinity and lookback applies only after a real watermark.
+    if l_stored is null then
+        l_bound := '-infinity'::timestamp;
+    else
+        l_bound := l_stored - (l_lookback * interval '1 hour');
+    end if;
 
     l_sql := regexp_replace(p_sql, ':since\M', '$1', 'gi');
 

@@ -33,6 +33,17 @@ call deltaplan.capture_delta('orders', $sql$
     group by o.customer_id
 $sql$);
 
+call deltaplan.capture_delta('order_items', $sql$
+    select o.customer_id as pk_1,
+           null::text as pk_2,
+           null::text as pk_3,
+           max(oi.updated_at) as watermark
+    from order_items oi
+    join orders o on o.id = oi.order_id
+    where oi.updated_at > :since
+    group by o.customer_id
+$sql$);
+
 call deltaplan.prepare_batches(2);
 
 while deltaplan.next_batch() loop
@@ -75,6 +86,19 @@ while deltaplan.next_batch() loop
     ) s
     where not exists (
         select 1 from customer_metrics t where t.customer_id = s.customer_id
+    );
+
+    -- A captured customer with no remaining line items is absent from the insert.
+    -- Delete that mart row or a full refresh will not have it.
+    delete from customer_metrics t
+    where exists (
+        select 1 from deltaplan_batch b where b.pk_1 = t.customer_id::text
+    )
+    and not exists (
+        select 1
+        from orders o
+        join order_items oi on oi.order_id = o.id
+        where o.customer_id = t.customer_id
     );
 
     call deltaplan.finish_batch();

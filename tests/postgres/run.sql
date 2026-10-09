@@ -48,8 +48,10 @@ create table public.inc_test_seen (
 );
 
 \ir deltaplan_test.sql
+\ir deltaplan_test_edges.sql
 
 delete from deltaplan_watermark
 where target_table in ('inc_test_tgt', 'other_tgt');
 
 call deltaplan_test.run();
+call deltaplan_test.run_edges();

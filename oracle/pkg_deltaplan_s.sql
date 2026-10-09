@@ -40,6 +40,7 @@ create or replace package pkg_deltaplan is
     -- When p_commit is true, the captured keys are committed first,
     -- and each finish_batch commits its own batch.
     -- A later call in the same session resumes at the unfinished batch.
+    -- The key tables are temporary, so a new session does not see them.
     -- finalize does not advance the watermark while such a batch remains.
     procedure prepare_batches(
         p_batch_size  number  default 5000,

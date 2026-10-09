@@ -31,3 +31,12 @@ comment on column deltaplan_keys.batch_no is
     'Batch of a distinct (pk_1, pk_2, pk_3). The same key from several sources shares one batch. Null when batches are not used.';
 comment on column deltaplan_keys.batch_done is
     '1 after finish_batch. The watermark has not moved yet.';
+
+-- Distinct business keys. deltaplan_keys has one row per source, so a join
+-- from that table into an aggregate counts the same key once per source.
+create or replace view deltaplan_keyset as
+select distinct target_table, data_segment, pk_1, pk_2, pk_3
+from deltaplan_keys;
+
+comment on table deltaplan_keyset is
+    'Distinct (pk_1, pk_2, pk_3) captured for this session. Calculations read this or deltaplan_batch, not deltaplan_keys.';

@@ -16,7 +16,7 @@ The calculation itself is ordinary SQL that you write. Batches are optional.
 | `tests/postgres/` | The same checks, driven by `psql` |
 | `tests/docker/` | Oracle and PostgreSQL for a machine that does not already have them |
 
-The three tables have the same names on both engines: `deltaplan_watermark` (the stored high-water mark), `deltaplan_keys` (every captured key for this run), and `deltaplan_batch` (the keys of the batch that is open).
+The three tables have the same names on both engines: `deltaplan_watermark` (the stored high-water mark), `deltaplan_keys` (every captured key for this run), and `deltaplan_batch` (the keys of the batch that is open). `deltaplan_keyset` is the distinct business key. `deltaplan_keys` keeps one row per source so each source can advance its own watermark. Join `deltaplan_keyset` or `deltaplan_batch` into an aggregate. Joining `deltaplan_keys` counts a customer once per source.
 
 Column order is the same on both engines. `deltaplan_watermark` is `target_table`, `data_segment`, `source_table`, then `watermark`, then `updated_at`. `deltaplan_keys` starts with those three columns, then `pk_1`, `pk_2`, `pk_3` in the same order as `deltaplan_batch`, then the source `watermark` of that key, then `batch_no` and `batch_done`. A capture statement projects `pk_1`, `pk_2`, `pk_3`, `watermark` and filters with `:since`.
 
@@ -47,7 +47,9 @@ If the transaction that called `initialize` is rolled back, the temporary tables
 
 ## A run without batches
 
-The capture statement contains `:since` once. That placeholder is already the stored watermark minus the lookback. The predicate stays strict: `value > :since`.
+The capture statement contains `:since` once. That placeholder is already the stored watermark minus the lookback. The predicate stays strict: `value > :since`. When no watermark is stored, `:since` is the minimum timestamp (`-infinity` on PostgreSQL, 1 January 4712 BCE on Oracle) and lookback is not subtracted. `finalize` never moves a stored watermark backwards.
+
+Hard deletes are not supported. Capture reads a row that is still in the source. A `DELETE` leaves nothing whose watermark can move, and lookback does not bring that row back. A mart key is refreshed only when some surviving row moves past `:since` and the capture statement returns that key.
 
 ```sql
 begin
@@ -61,18 +63,19 @@ begin
         where updated_at > :since
         group by customer_id
     ]');
-    -- merge or update, reading deltaplan_keys
+    -- merge or update, reading deltaplan_keyset
     -- where target_table = pkg_deltaplan.get_target_table
     --   and data_segment = pkg_deltaplan.get_data_segment
+    -- only captured keys are visible; a hard-deleted source row is not one of them
     pkg_deltaplan.finalize;
 end;
 ```
 
-On PostgreSQL the same steps are `call deltaplan.initialize(...)`, `call deltaplan.capture_delta(...)`, your statement, and `call deltaplan.finalize()`. Read `deltaplan_keys` with `deltaplan.get_target_table()` and `deltaplan.get_data_segment()`.
+On PostgreSQL the same steps are `call deltaplan.initialize(...)`, `call deltaplan.capture_delta(...)`, your statement, and `call deltaplan.finalize()`. Read `deltaplan_keyset` with `deltaplan.get_target_table()` and `deltaplan.get_data_segment()`.
 
 ## A run in batches
 
-`prepare_batches` numbers the keys. With `p_commit` true it commits them first, then each `finish_batch` commits its own batch. The next session can resume at the unfinished batch. `finalize` refuses to move the watermark until every batch is done.
+`prepare_batches` numbers the keys. With `p_commit` true it commits them first, then each `finish_batch` commits its own batch. The same session can resume at the unfinished batch after a rollback. The key tables are temporary, so a new session does not see them. `finalize` refuses to move the watermark until every batch is done.
 
 ```sql
 pkg_deltaplan.prepare_batches(5000);
@@ -98,7 +101,9 @@ call deltaplan.finalize();
 
 ## Tests
 
-The Oracle suite is `pkg_deltaplan_test.run`. The PostgreSQL suite is `deltaplan_test.run()`. Both cover a static load, the lookback window, batches, a resume after rollback, and the errors that keep a watermark in place.
+The Oracle suite is `pkg_deltaplan_test.run`. The PostgreSQL suite is `deltaplan_test.run()`. Both cover a static load, the lookback window, batches, a resume after rollback, and the errors that keep a watermark in place. `pkg_deltaplan_test_edges.run` and `deltaplan_test.run_edges()` cover the initial bound, a watermark that must not move backwards, segments, the strict timestamp predicate, fractional lookback, duplicate keys, null key parts, and the capture errors.
+
+`make test-consistency` compares an incremental customer-metrics mart with a full refresh of the same SQL, using xoverrr. `docs/consistency.md` records what matches. Hard deletes do not: capture never sees a removed source row.
 
 ```bash
 make test-oracle     # SQL*Plus; override ORACLE_CONNECT

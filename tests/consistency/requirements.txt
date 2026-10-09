@@ -1,0 +1,5 @@
+xoverrr==1.4.8
+psycopg2-binary==2.9.11
+SQLAlchemy==2.0.44
+pytest==8.4.2
+matplotlib==3.10.6

@@ -10,12 +10,19 @@ PGPASSWORD ?= test_pass
 PGDATABASE ?= test_db
 export PG_CONTAINER PGUSER PGPASSWORD PGDATABASE
 
-.PHONY: test-oracle test-postgres test
+.PHONY: test-oracle test-postgres test-consistency test
 
-test: test-oracle test-postgres
+test: test-oracle test-postgres test-consistency
 
 test-oracle:
 	tests/oracle/run.sh
 
 test-postgres:
 	tests/postgres/run.sh
+
+# xoverrr compares an incremental mart with a full refresh.
+# DELTAPLAN_DSN overrides the database. The default is local PostgreSQL.
+test-consistency:
+	python3 -m venv .venv
+	.venv/bin/pip install -q -r tests/consistency/requirements.txt
+	.venv/bin/pytest -q tests/consistency

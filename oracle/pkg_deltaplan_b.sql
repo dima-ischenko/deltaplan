@@ -194,7 +194,7 @@ create or replace package body pkg_deltaplan is
           and source_table = p_source_table
           and data_segment = gv_data_segment;
 
-        return coalesce(l_result, date '2000-01-01');
+        return l_result;
     end get_watermark;
 
     procedure initialize(
@@ -308,7 +308,13 @@ create or replace package body pkg_deltaplan is
 
         l_watermark := get_watermark(l_source_table);
         -- Date arithmetic keeps the bound as DATE. Hours are a fraction of a day.
-        l_bound := l_watermark - l_lookback / 24;
+        -- No stored watermark yet: every supported DATE qualifies. Lookback is
+        -- not subtracted from the type minimum, because that underflows.
+        if l_watermark is null then
+            l_bound := to_date('-4712-01-01', 'SYYYY-MM-DD');
+        else
+            l_bound := l_watermark - l_lookback / 24;
+        end if;
 
         begin
         l_insert_sql := '
