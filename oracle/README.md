@@ -1,10 +1,12 @@
 # Oracle
 
-Deploy and rollback: [deploy.md](deploy.md).
+Call `pkg_deltaplan` after you [deploy](deploy.md) it into the calculating user's schema.
 
-The package keeps its position in the session, so a rollback does not forget which batch was open. When `p_commit` is true, which is the default, the captured keys are committed first and each `finish_batch` commits its own batch. A later call in the same session resumes at the unfinished batch. After a rollback `deltaplan_batch_tmp` is empty, and the next `next_batch` returns that same batch. The `finish_batch` log line records `sql%rowcount` of the preceding statement.
+The steps are the same as in the [root README](../README.md): `initialize`, `capture_delta` for each source, the refresh statement, `finalize`.
 
-A run without batches. The merge reads `deltaplan_keys_tmp`, restricted to the current target and segment:
+## A run without batches
+
+The merge reads `deltaplan_keys_tmp`, restricted to the current target and segment:
 
 ```sql
 declare
@@ -95,7 +97,9 @@ begin
 end;
 ```
 
-A run in batches. The merge is the same, except that it reads `deltaplan_batch_tmp` and does not filter on target or segment: those keys already belong to the open batch.
+## A run in batches
+
+The merge is the same, except that it reads `deltaplan_batch_tmp` and does not filter on target or segment: those keys already belong to the open batch.
 
 ```sql
 declare
@@ -190,3 +194,11 @@ end;
 ```
 
 A session with three sources is in `examples/oracle/example_customer_metrics.sql`. `examples/oracle/seed_volume.sql` loads a large source and is not part of the tests.
+
+## Commits and resume
+
+When `p_commit` is true, which is the default, the captured keys are committed first and each `finish_batch` commits its own batch. A later call in the same session resumes at the unfinished batch.
+
+The package keeps its position in the session, so a rollback does not forget which batch was open. After a rollback `deltaplan_batch_tmp` is empty, and the next `next_batch` returns that same batch.
+
+The `finish_batch` log line records `sql%rowcount` of the preceding statement, so call it immediately after the refresh statement.

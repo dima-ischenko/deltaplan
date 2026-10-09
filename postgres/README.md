@@ -1,12 +1,12 @@
 # PostgreSQL and Greenplum
 
-Deploy and rollback: [deploy.md](deploy.md).
+Call the functions in schema `deltaplan` after you [deploy](deploy.md).
 
-The routines are functions in schema `deltaplan`. They do not commit, so they run on PostgreSQL and on Greenplum releases that forbid a commit inside a function. `deltaplan_watermark` is created in `public`. `initialize` creates the temporary tables for the session. If that transaction is rolled back, the temporary tables are dropped with it, and `initialize` must be called again.
+The steps are the same as in the [root README](../README.md): `initialize`, `capture_delta` for each source, the refresh statement, `finalize`. From SQL, call them with `select`. From PL/pgSQL, use `perform`. `next_batch` returns boolean, so a `WHILE` loop works inside a `DO` block.
 
-From SQL, call them with `select`. From PL/pgSQL, use `perform`. `next_batch` returns boolean, so a `WHILE` loop works inside a `DO` block. Commit after `prepare_batches` if a later rollback should keep the captured keys, and after each `finish_batch` if it should keep that batch. `next_batch`, the mart statement, and `finish_batch` stay in one transaction: a commit empties `deltaplan_batch_tmp` before the statement can read it. `finish_batch` takes an optional row count, `p_merged`, because it cannot see the caller's `ROW_COUNT`.
+## A run without batches
 
-A run without batches. `MERGE` is available on PostgreSQL 15 and later. The statement reads `deltaplan_keys_tmp`, restricted to the current target and segment:
+`MERGE` is available on PostgreSQL 15 and later. The statement reads `deltaplan_keys_tmp`, restricted to the current target and segment. Greenplum has no `MERGE`; use `UPDATE` then `INSERT`, as in `examples/postgres/example_customer_metrics.sql`.
 
 ```sql
 do $run$
@@ -99,7 +99,9 @@ end;
 $run$;
 ```
 
-A run in batches, inside a `DO` block. The merge is the same, except that it reads `deltaplan_batch_tmp`.
+## A run in batches
+
+The merge is the same, except that it reads `deltaplan_batch_tmp`.
 
 ```sql
 do $run$
@@ -197,6 +199,16 @@ $run$;
 
 A session with three sources is in `examples/postgres/example_customer_metrics.sql`. That file uses `UPDATE` followed by `INSERT`, which also runs on Greenplum 7.
 
+## Transactions
+
+The functions do not commit. `deltaplan_watermark` is created in `public`. `initialize` creates the temporary tables for the session. If that transaction is rolled back, the temporary tables are dropped with it, and `initialize` must be called again.
+
+Commit after `prepare_batches` if a later rollback should keep the captured keys, and after each `finish_batch` if it should keep that batch. `next_batch`, the refresh statement, and `finish_batch` stay in one transaction: a commit empties `deltaplan_batch_tmp` before the statement can read it.
+
+`finish_batch` takes an optional row count, `p_merged`, because it cannot see the caller's `ROW_COUNT`.
+
 ## Greenplum
 
-The same deploy file is used on Greenplum 7. Greenplum has no `MERGE`. The suite was run on PostgreSQL 15.4. A Greenplum cluster was not started here.
+The same [deploy](deploy.md) file is used on Greenplum 7. The functions do not commit, so they run on releases that forbid a commit inside a function. Greenplum has no `MERGE`. `deltaplan_watermark` is `DISTRIBUTED BY (target_table)`, and the temporary key tables are `DISTRIBUTED BY (pk_1)`.
+
+The suite was run on PostgreSQL 15.4. A Greenplum cluster was not started here.

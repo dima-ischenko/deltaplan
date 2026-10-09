@@ -8,4 +8,4 @@ create global temporary table deltaplan_batch_tmp (
 ) on commit delete rows;
 
 comment on table deltaplan_batch_tmp is
-    'Keys of the open batch. The target statement reads this table, not the whole of deltaplan_keys_tmp.';
+    'Keys of the open batch. The refresh statement reads this table, not the whole of deltaplan_keys_tmp.';

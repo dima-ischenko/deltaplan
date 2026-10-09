@@ -3,12 +3,12 @@
 -- procedures, and Greenplum releases that forbid a commit inside a
 -- function, can run this file. The caller commits.
 --
--- The script does not use MERGE: Greenplum has none. A target statement is
+-- The script does not use MERGE: Greenplum has none. A refresh statement is
 -- an UPDATE and an INSERT, or INSERT ... ON CONFLICT where the server has it.
 --
 -- The calculating session calls deltaplan.initialize, which creates the
 -- temporary tables deltaplan_keys_tmp and deltaplan_batch_tmp. Their names match the
--- Oracle installation, so the target statement can read them unqualified.
+-- Oracle installation, so the refresh statement can read them unqualified.
 -- deltaplan_watermark is permanent and holds the watermark.
 -- Column order matches the Oracle tables. See oracle/ddl_dml/deltaplan_keys_tmp.sql.
 --

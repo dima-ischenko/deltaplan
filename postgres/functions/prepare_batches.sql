@@ -1,8 +1,8 @@
--- Batches are optional. Without them the target statement reads deltaplan_keys_tmp.
+-- Batches are optional. Without them the refresh statement reads deltaplan_keys_tmp.
 -- With them: prepare_batches, then next_batch / SQL on deltaplan_batch_tmp / finish_batch.
 -- This function does not commit. Commit after prepare_batches if a later
 -- rollback should keep the captured keys, and after each finish_batch if
--- a later rollback should keep that batch. next_batch, the mart statement
+-- a later rollback should keep that batch. next_batch, the refresh statement
 -- and finish_batch stay in one transaction: deltaplan_batch_tmp is
 -- ON COMMIT DELETE ROWS.
 create or replace function deltaplan.prepare_batches(
