@@ -1,0 +1,40 @@
+# A private pair of databases for deltaplan. Host ports are 1522 and 5434
+# so this stack can run beside another Oracle on 1521 and another Postgres on 5433.
+#
+#   docker compose -f tests/docker/docker-compose.yml up --wait
+#
+# Oracle, after the health check:  test/test_pass@//localhost:1522/FREEPDB1
+# Postgres:                         postgresql://test_user:test_pass@localhost:5434/test_db
+
+services:
+  oracle:
+    image: gvenzl/oracle-free:23.26.1-slim-faststart
+    container_name: deltaplan-oracle
+    ports:
+      - "1522:1521"
+    environment:
+      ORACLE_PASSWORD: oracle
+      APP_USER: test
+      APP_USER_PASSWORD: test_pass
+    shm_size: 1gb
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 60s
+
+  postgres:
+    image: postgres:15.4
+    container_name: deltaplan-postgres
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_pass
+      POSTGRES_DB: test_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d test_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
