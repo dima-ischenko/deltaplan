@@ -9,23 +9,8 @@ set verify off
 
 begin execute immediate 'drop package pkg_deltaplan_test'; exception when others then if sqlcode != -4043 then raise; end if; end;
 /
-begin execute immediate 'drop package pkg_deltaplan'; exception when others then if sqlcode != -4043 then raise; end if; end;
-/
-begin execute immediate 'drop table deltaplan_batch_tmp purge'; exception when others then if sqlcode != -942 then raise; end if; end;
-/
-begin execute immediate 'drop table deltaplan_batch purge'; exception when others then if sqlcode != -942 then raise; end if; end;
-/
-begin execute immediate 'drop table deltaplan_keys_tmp purge'; exception when others then if sqlcode != -942 then raise; end if; end;
-/
-begin execute immediate 'drop table deltaplan_keys purge'; exception when others then if sqlcode != -942 then raise; end if; end;
-/
-begin execute immediate 'drop table deltaplan_key purge'; exception when others then if sqlcode != -942 then raise; end if; end;
-/
-begin execute immediate 'drop table deltaplan_watermark purge'; exception when others then if sqlcode != -942 then raise; end if; end;
-/
-begin execute immediate 'drop table deltaplan_mark purge'; exception when others then if sqlcode != -942 then raise; end if; end;
-/
-
+@@../../oracle/rollback_code.sql
+@@../../oracle/rollback_structure.sql
 @@../../oracle/ddl_dml/deltaplan_watermark.sql
 @@../../oracle/ddl_dml/deltaplan_keys_tmp.sql
 @@../../oracle/ddl_dml/deltaplan_batch_tmp.sql

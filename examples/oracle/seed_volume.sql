@@ -2,7 +2,7 @@
 -- Then a delta of 7 per cent of the base: half of it updates existing keys, half inserts new rows.
 -- The base watermark is written to deltaplan_watermark, so the tracker loads only the delta.
 --
--- Install first: oracle/install.sql.
+-- Deploy first: oracle/deploy.sql.
 -- set serveroutput on size unlimited
 -- set timing on
 
