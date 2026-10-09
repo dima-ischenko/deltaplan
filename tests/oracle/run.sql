@@ -91,11 +91,5 @@ begin
 end;
 /
 
-set linesize 32767
-set pagesize 0
-set heading off
-begin
-    ut.run('pkg_deltaplan_test');
-end;
-/
+exec pkg_deltaplan_test.run
 exit

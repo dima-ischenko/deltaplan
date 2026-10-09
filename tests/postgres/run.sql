@@ -52,5 +52,4 @@ create table public.inc_test_seen (
 delete from deltaplan_watermark
 where target_table in ('inc_test_tgt', 'other_tgt');
 
-set search_path = public, pg_temp;
-\ir deltaplan_tap.sql
+call deltaplan_test.run();

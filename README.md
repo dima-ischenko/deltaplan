@@ -495,8 +495,6 @@ The same file installs on Greenplum 7. The functions do not commit. Greenplum ha
 
 ## Tests
 
-Oracle tests use [utPLSQL](https://www.utplsql.org/). PostgreSQL and Greenplum tests use [pgTAP](https://pgtap.org/). The runners install those frameworks into the database on first run.
-
 Both suites copy the scripts into a database container. The host does not need `sqlplus` or `psql`.
 
 ```bash
@@ -509,8 +507,8 @@ make test
 
 `make` without those variables uses containers named `oracle` and `postgres`. `ORACLE_CONNECT` is passed into the Oracle container, so the host port does not appear in the string.
 
-The Oracle image is [gvenzl/oracle-free](https://github.com/gvenzl/oci-oracle-free). It does not require an Oracle registry login. The first start takes several minutes. utPLSQL needs Oracle XML DB, which that image includes. Oracle Free **lite** does not, so `make test-oracle` against a lite container will stop before install.
+The Oracle image is [gvenzl/oracle-free](https://github.com/gvenzl/oci-oracle-free). It does not require an Oracle registry login. The first start takes several minutes.
 
 GitHub Actions runs the same suites. Open **Actions**, choose **Tests**, and run the workflow. A push and a pull request start it as well.
 
-Both suites cover a static load of 10,000 keys per source, the lookback window, batches, a resume after rollback, and the errors that keep a watermark in place. utPLSQL prints `N tests, 0 failed, 0 errored`. pgTAP prints TAP and `finish(true)` raises if any assertion failed.
+Both suites cover a static load, the lookback window, batches, a resume after rollback, and the errors that keep a watermark in place. The passing lines are `pkg_deltaplan_test: passed` and `deltaplan_test: passed`.
