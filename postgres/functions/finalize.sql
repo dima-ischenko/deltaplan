@@ -1,7 +1,7 @@
-create or replace function deltaplan.finalize()
+create or replace function finalize()
 returns void
 language plpgsql
-set search_path = pg_temp, public as $$
+set search_path = pg_temp, :"dpl_schema", public as $$
 declare
     l_target     text;
     l_segment    text;
@@ -15,27 +15,27 @@ declare
     l_old        timestamp;
     l_effective  timestamp;
 begin
-    if to_regclass('deltaplan_session_tmp') is null then
+    if to_regclass('dpl_session_tmp') is null then
         raise exception 'DP-20001 Call initialize first';
     end if;
 
     select target_table, data_segment, batches_ready, apply_open
     into l_target, l_segment, l_ready, l_open
-    from deltaplan_session_tmp
+    from dpl_session_tmp
     where id = 1;
 
     if l_target is null then
         raise exception 'DP-20001 Call initialize first';
     end if;
 
-    l_left := deltaplan._unfinished();
-    l_unassigned := deltaplan._unassigned();
+    l_left := _unfinished();
+    l_unassigned := _unassigned();
 
     select count(*)
     into l_all_pk
     from (
         select distinct pk_1, pk_2, pk_3
-        from deltaplan_keys_tmp
+        from dpl_keys_tmp
         where target_table = l_target
           and data_segment = l_segment
     ) k;
@@ -52,7 +52,7 @@ begin
         select s.source_table, s.watermark
         from (
             select source_table, max(watermark) as watermark
-            from deltaplan_keys_tmp
+            from dpl_keys_tmp
             where target_table = l_target
               and data_segment = l_segment
             group by source_table
@@ -61,7 +61,7 @@ begin
     loop
         select watermark
         into l_old
-        from deltaplan_watermark
+        from dpl_watermark
         where target_table = l_target
           and data_segment = l_segment
           and source_table = r.source_table;
@@ -72,24 +72,24 @@ begin
             l_effective := l_old;
         end if;
 
-        insert into deltaplan_watermark (target_table, data_segment, source_table, watermark, updated_at)
+        insert into dpl_watermark (target_table, data_segment, source_table, watermark, updated_at)
         values (l_target, l_segment, r.source_table, l_effective, clock_timestamp()::timestamp)
         on conflict (target_table, data_segment, source_table) do update
             set watermark = excluded.watermark,
                 updated_at = excluded.updated_at
-            where deltaplan_watermark.watermark < excluded.watermark;
+            where dpl_watermark.watermark < excluded.watermark;
 
         l_sources := l_sources + 1;
-        raise notice 'deltaplan.finalize: source=% stored=% captured=% effective=%',
+        raise notice 'finalize: source=% stored=% captured=% effective=%',
             r.source_table, l_old, r.watermark, l_effective;
     end loop;
 
     if l_sources = 0 then
-        raise notice 'deltaplan.finalize: no delta, watermarks unchanged';
+        raise notice 'finalize: no delta, watermarks unchanged';
     end if;
 
-    delete from deltaplan_batch_tmp;
-    update deltaplan_session_tmp
+    delete from dpl_batch_tmp;
+    update dpl_session_tmp
     set target_table = null,
         data_segment = null,
         lookback_hours = 0,

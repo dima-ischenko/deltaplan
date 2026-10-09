@@ -1,6 +1,6 @@
 -- Base volume: 100,000 customers, 1,000,000 orders, 30,000,000 order_items.
 -- Then a delta of 7 per cent of the base: half of it updates existing keys, half inserts new rows.
--- The base watermark is written to deltaplan_watermark, so the tracker loads only the delta.
+-- The base watermark is written to dpl_watermark, so the tracker loads only the delta.
 --
 -- Deploy first: oracle/deploy.sql.
 -- set serveroutput on size unlimited

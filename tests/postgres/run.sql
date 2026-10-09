@@ -1,10 +1,14 @@
--- Rebuild deltaplan in this database and run the checks.
+-- Rebuild into schema lib (not public) and run the checks.
 -- psql "postgresql://user:password@localhost:5432/db" -v ON_ERROR_STOP=1 -f tests/postgres/run.sql
 
 \set ON_ERROR_STOP on
+\set dpl_schema lib
 drop schema if exists deltaplan_test cascade;
+drop schema if exists lib cascade;
+create schema lib;
 \ir ../../postgres/rollback.sql
 \ir ../../postgres/deploy.sql
+set search_path to lib, public;
 
 drop table if exists public.inc_test_seen;
 drop table if exists public.inc_test_expect;
@@ -48,7 +52,7 @@ create table public.inc_test_seen (
 
 \ir deltaplan_test.sql
 
-delete from deltaplan_watermark
+delete from dpl_watermark
 where target_table in ('inc_test_tgt', 'other_tgt');
 
 call deltaplan_test.run();

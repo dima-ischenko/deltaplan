@@ -10,8 +10,8 @@ The refresh statement is ordinary SQL. Batches are optional: a small target tabl
 ## How a run works
 
 1. Call `initialize` with the target table, a data segment (default `all`), and a lookback in hours (default `0`).
-2. Call `capture_delta` once for each source. Each call inserts keys into `deltaplan_keys_tmp`.
-3. Refresh the target table for those keys. Without batches, one statement reads `deltaplan_keys_tmp`. With batches, each statement reads `deltaplan_batch_tmp`.
+2. Call `capture_delta` once for each source. Each call inserts keys into `dpl_keys_tmp`.
+3. Refresh the target table for those keys. Without batches, one statement reads `dpl_keys_tmp`. With batches, each statement reads `dpl_batch_tmp`.
 4. Call `finalize`. It writes, for each source, the greatest watermark captured in this run.
 
 A key that arrives from several sources is assigned to a single batch.
@@ -26,7 +26,7 @@ The statement must contain the placeholder `:since` exactly once. `:since` is th
 
 The tables have the same names and the same column order on Oracle and PostgreSQL.
 
-`deltaplan_watermark` is permanent. There is one row for each combination of target, segment, and source. `finalize` advances `watermark` and sets `updated_at`.
+`dpl_watermark` is permanent. There is one row for each combination of target, segment, and source. `finalize` advances `watermark` and sets `updated_at`.
 
 | Column | Meaning |
 | --- | --- |
@@ -34,16 +34,16 @@ The tables have the same names and the same column order on Oracle and PostgreSQ
 | `watermark` | Greatest source value that has been fully applied |
 | `updated_at` | Time at which `finalize` last wrote the row |
 
-`deltaplan_keys_tmp` holds every key captured in the current run. The rows survive a commit and last until the session ends. A run without batches reads this table, restricted to the current target and segment.
+`dpl_keys_tmp` holds every key captured in the current run. The rows survive a commit and last until the session ends. A run without batches reads this table, restricted to the current target and segment.
 
 | Column | Meaning |
 | --- | --- |
-| `target_table`, `data_segment`, `source_table` | Same grain as `deltaplan_watermark` |
+| `target_table`, `data_segment`, `source_table` | Same grain as `dpl_watermark` |
 | `pk_1`, `pk_2`, `pk_3` | Business key of the target row |
 | `watermark` | Source value of this key |
 | `batch_no`, `batch_done` | Filled by `prepare_batches`. `batch_done` becomes `1` after `finish_batch` |
 
-`deltaplan_batch_tmp` holds the business key of the open batch: `pk_1`, `pk_2`, `pk_3`, in the same order as in `deltaplan_keys_tmp`. A commit empties the table. The refresh statement of a batched run reads this table.
+`dpl_batch_tmp` holds the business key of the open batch: `pk_1`, `pk_2`, `pk_3`, in the same order as in `dpl_keys_tmp`. A commit empties the table. The refresh statement of a batched run reads this table.
 
 Session tables take the suffix `_tmp`, the usual warehouse marker for a temporary relation. `_gtt` is not used: it would describe Oracle only, while PostgreSQL and Greenplum use session `TEMP` tables.
 
@@ -51,7 +51,7 @@ Session tables take the suffix `_tmp`, the usual warehouse marker for a temporar
 
 `prepare_batches` numbers the distinct keys. The default size is `5000`.
 
-The loop is then `next_batch`, the refresh statement against `deltaplan_batch_tmp`, and `finish_batch`. Call `finish_batch` immediately after that statement. `next_batch` returns false when no unfinished batch remains. Call `finalize` after the loop. It raises an error while a batch is unfinished, and that error does not roll the session back.
+The loop is then `next_batch`, the refresh statement against `dpl_batch_tmp`, and `finish_batch`. Call `finish_batch` immediately after that statement. `next_batch` returns false when no unfinished batch remains. Call `finalize` after the loop. It raises an error while a batch is unfinished, and that error does not roll the session back.
 
 Commit behaviour differs by engine: [Oracle](oracle/README.md), [PostgreSQL](postgres/README.md).
 
@@ -78,22 +78,22 @@ pkg_deltaplan.capture_delta('orders', q'[
 ]');
 ```
 
-Without batches, the refresh statement still reads `deltaplan_keys_tmp` restricted to that segment:
+Without batches, the refresh statement still reads `dpl_keys_tmp` restricted to that segment:
 
 ```sql
 where k.target_table = pkg_deltaplan.get_target_table
   and k.data_segment = pkg_deltaplan.get_data_segment
 ```
 
-`deltaplan_batch_tmp` does not store the segment: it contains only the keys of the open batch, which already belong to the current run. A second session may call `initialize` for another segment of the same target; the watermarks remain separate.
+`dpl_batch_tmp` does not store the segment: it contains only the keys of the open batch, which already belong to the current run. A second session may call `initialize` for another segment of the same target; the watermarks remain separate.
 
-On PostgreSQL the same calls are `deltaplan.initialize` and `deltaplan.get_data_segment()`.
+On PostgreSQL the same calls are `initialize` and `get_data_segment()`. The install schema has to be on the `search_path`.
 
 ## Hard deletes
 
 Hard deletes are not supported.
 
-Capture can return a key only while that key still exists in the source and its watermark is greater than `:since`. A physical `DELETE` removes the source row, so the key never reaches `deltaplan_keys_tmp` and the target row is left unchanged.
+Capture can return a key only while that key still exists in the source and its watermark is greater than `:since`. A physical `DELETE` removes the source row, so the key never reaches `dpl_keys_tmp` and the target row is left unchanged.
 
 If a removal must reach the target table, keep a row in the source: a deleted flag, a tombstone, or an audit record, with a watermark that continues to move. The refresh statement then deletes or updates the corresponding key.
 

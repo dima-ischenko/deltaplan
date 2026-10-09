@@ -88,7 +88,7 @@ create or replace package body pkg_deltaplan is
     begin
         select count(distinct batch_no)
         into l_left
-        from deltaplan_keys_tmp
+        from dpl_keys_tmp
         where target_table = gv_target_table
           and data_segment = gv_data_segment
           and batch_no is not null
@@ -102,7 +102,7 @@ create or replace package body pkg_deltaplan is
     begin
         select count(distinct batch_no)
         into l_total
-        from deltaplan_keys_tmp
+        from dpl_keys_tmp
         where target_table = gv_target_table
           and data_segment = gv_data_segment
           and batch_no is not null;
@@ -115,7 +115,7 @@ create or replace package body pkg_deltaplan is
     begin
         select count(*)
         into l_cnt
-        from deltaplan_keys_tmp
+        from dpl_keys_tmp
         where target_table = gv_target_table
           and data_segment = gv_data_segment
           and batch_no is null
@@ -189,7 +189,7 @@ create or replace package body pkg_deltaplan is
     begin
         select max(watermark)
         into l_result
-        from deltaplan_watermark
+        from dpl_watermark
         where target_table = gv_target_table
           and source_table = p_source_table
           and data_segment = gv_data_segment;
@@ -230,12 +230,12 @@ create or replace package body pkg_deltaplan is
         gv_keys_durable := false;
         gv_apply_open := false;
 
-        delete from deltaplan_keys_tmp
+        delete from dpl_keys_tmp
         where target_table = gv_target_table
           and data_segment = gv_data_segment;
         l_rows := sql%rowcount;
 
-        delete from deltaplan_batch_tmp;
+        delete from dpl_batch_tmp;
         l_batch_rows := sql%rowcount;
 
         i_log(
@@ -313,7 +313,7 @@ create or replace package body pkg_deltaplan is
         begin
         l_insert_sql := '
             begin
-                insert into deltaplan_keys_tmp (
+                insert into dpl_keys_tmp (
                     target_table,
                     data_segment,
                     source_table,
@@ -340,7 +340,7 @@ create or replace package body pkg_deltaplan is
 
         select count(*), min(watermark), max(watermark)
         into l_slice_rows, l_min, l_max
-        from deltaplan_keys_tmp
+        from dpl_keys_tmp
         where target_table = gv_target_table
           and data_segment = gv_data_segment
           and source_table = l_source_table;
@@ -349,7 +349,7 @@ create or replace package body pkg_deltaplan is
         into l_slice_pk
         from (
             select distinct pk_1, pk_2, pk_3
-            from deltaplan_keys_tmp
+            from dpl_keys_tmp
             where target_table = gv_target_table
               and data_segment = gv_data_segment
               and source_table = l_source_table
@@ -404,14 +404,14 @@ create or replace package body pkg_deltaplan is
         into l_key_total
         from (
             select distinct pk_1, pk_2, pk_3
-            from deltaplan_keys_tmp
+            from dpl_keys_tmp
             where target_table = gv_target_table
               and data_segment = gv_data_segment
         );
 
         select count(*)
         into l_assigned
-        from deltaplan_keys_tmp
+        from dpl_keys_tmp
         where target_table = gv_target_table
           and data_segment = gv_data_segment
           and batch_no is not null
@@ -431,7 +431,7 @@ create or replace package body pkg_deltaplan is
         if gv_batch_no is not null then
             select count(*)
             into l_open
-            from deltaplan_batch_tmp
+            from dpl_batch_tmp
             where rownum = 1;
 
             if l_open > 0 then
@@ -469,7 +469,7 @@ create or replace package body pkg_deltaplan is
             end if;
 
             if l_assigned = 0 then
-                merge into deltaplan_keys_tmp t
+                merge into dpl_keys_tmp t
                 using (
                     select pk_1,
                            pk_2,
@@ -479,7 +479,7 @@ create or replace package body pkg_deltaplan is
                            ) / l_batch_size) as batch_no
                     from (
                         select distinct pk_1, pk_2, pk_3
-                        from deltaplan_keys_tmp
+                        from dpl_keys_tmp
                         where target_table = gv_target_table
                           and data_segment = gv_data_segment
                     )
@@ -536,11 +536,11 @@ create or replace package body pkg_deltaplan is
 
     procedure load_batch_keys(p_batch_no number, p_keys out number) is
     begin
-        delete from deltaplan_batch_tmp;
+        delete from dpl_batch_tmp;
 
-        insert into deltaplan_batch_tmp (pk_1, pk_2, pk_3)
+        insert into dpl_batch_tmp (pk_1, pk_2, pk_3)
         select distinct pk_1, pk_2, pk_3
-        from deltaplan_keys_tmp
+        from dpl_keys_tmp
         where target_table = gv_target_table
           and data_segment = gv_data_segment
           and batch_no = p_batch_no
@@ -565,7 +565,7 @@ create or replace package body pkg_deltaplan is
         if gv_batch_no is not null then
             select count(*)
             into l_open
-            from deltaplan_batch_tmp
+            from dpl_batch_tmp
             where rownum = 1;
 
             if l_open > 0 then
@@ -600,7 +600,7 @@ create or replace package body pkg_deltaplan is
 
             select min(batch_no)
             into l_next
-            from deltaplan_keys_tmp
+            from dpl_keys_tmp
             where target_table = gv_target_table
               and data_segment = gv_data_segment
               and batch_no is not null
@@ -613,7 +613,7 @@ create or replace package body pkg_deltaplan is
 
                 gv_batch_no := null;
                 gv_apply_open := false;
-                delete from deltaplan_batch_tmp;
+                delete from dpl_batch_tmp;
                 i_log(l_proc_name, 0, 'nothing left to apply batches=' || batch_total);
                 return false;
             end if;
@@ -655,7 +655,7 @@ create or replace package body pkg_deltaplan is
         end if;
 
         begin
-            update deltaplan_keys_tmp
+            update dpl_keys_tmp
             set batch_done = 1
             where target_table = gv_target_table
               and data_segment = gv_data_segment
@@ -671,7 +671,7 @@ create or replace package body pkg_deltaplan is
             if gv_batch_commit then
                 commit;
             else
-                delete from deltaplan_batch_tmp;
+                delete from dpl_batch_tmp;
             end if;
 
             gv_batch_no := null;
@@ -702,7 +702,7 @@ create or replace package body pkg_deltaplan is
         p_moved        out number
     ) is
     begin
-        merge into deltaplan_watermark t
+        merge into dpl_watermark t
         using (
             select gv_target_table as target_table,
                    gv_data_segment as data_segment,
@@ -724,7 +724,7 @@ create or replace package body pkg_deltaplan is
         p_moved := sql%rowcount;
     exception
         when dup_val_on_index then
-            update deltaplan_watermark
+            update dpl_watermark
             set watermark = p_effective,
                 updated_at = sysdate
             where target_table = gv_target_table
@@ -754,14 +754,14 @@ create or replace package body pkg_deltaplan is
         into l_all_pk
         from (
             select distinct pk_1, pk_2, pk_3
-            from deltaplan_keys_tmp
+            from dpl_keys_tmp
             where target_table = gv_target_table
               and data_segment = gv_data_segment
         );
 
         select count(*)
         into l_unassigned
-        from deltaplan_keys_tmp
+        from dpl_keys_tmp
         where target_table = gv_target_table
           and data_segment = gv_data_segment
           and batch_no is null
@@ -790,7 +790,7 @@ create or replace package body pkg_deltaplan is
                 select source_table,
                        max(watermark) watermark,
                        count(*) src_rows
-                from deltaplan_keys_tmp
+                from dpl_keys_tmp
                 where target_table = gv_target_table
                   and data_segment = gv_data_segment
                 group by source_table
@@ -799,7 +799,7 @@ create or replace package body pkg_deltaplan is
                 select source_table, count(*) pk_rows
                 from (
                     select distinct source_table, pk_1, pk_2, pk_3
-                    from deltaplan_keys_tmp
+                    from dpl_keys_tmp
                     where target_table = gv_target_table
                       and data_segment = gv_data_segment
                 )
@@ -813,7 +813,7 @@ create or replace package body pkg_deltaplan is
             begin
                 select watermark
                 into l_old
-                from deltaplan_watermark
+                from dpl_watermark
                 where target_table = gv_target_table
                   and data_segment = gv_data_segment
                   and source_table = ir.source_table;
@@ -867,7 +867,7 @@ create or replace package body pkg_deltaplan is
             || ' ' || fmt_num(round(seconds_since(l_started), 3)) || 's'
         );
 
-        delete from deltaplan_batch_tmp;
+        delete from dpl_batch_tmp;
 
         gv_target_table := null;
         gv_data_segment := null;

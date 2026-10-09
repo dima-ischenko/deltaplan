@@ -5,7 +5,7 @@ cd oracle
 sqlplus user/password@//host:1521/service @deploy.sql
 ```
 
-`deploy.sql` runs `deploy_structure.sql` then `deploy_code.sql`. This creates `deltaplan_watermark`, the two global temporary tables, and `pkg_deltaplan`.
+`deploy.sql` runs `deploy_structure.sql` then `deploy_code.sql`. This creates `dpl_watermark`, the two global temporary tables, and `pkg_deltaplan`.
 
 ```bash
 cd oracle

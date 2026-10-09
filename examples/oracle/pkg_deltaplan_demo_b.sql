@@ -284,7 +284,7 @@ create or replace package body pkg_deltaplan_demo is
             union all
             select 'order_items' from dual
         ) loop
-            merge into deltaplan_watermark t
+            merge into dpl_watermark t
             using (
                 select c_target as target_table,
                        c_segment as data_segment,
@@ -355,13 +355,13 @@ create or replace package body pkg_deltaplan_demo is
 
         if l_sync then
             begin
-                execute immediate 'select 1 from deltaplan_watermark where 1 = 0';
+                execute immediate 'select 1 from dpl_watermark where 1 = 0';
             exception
                 when others then
                     if sqlcode = -942 then
                         raise_application_error(
                             -20025,
-                            'deltaplan_watermark does not exist. Install it or call load_base(p_mark_synced => false)'
+                            'dpl_watermark does not exist. Install it or call load_base(p_mark_synced => false)'
                         );
                     end if;
                     raise;
@@ -394,8 +394,8 @@ create or replace package body pkg_deltaplan_demo is
                 1, p_customers, p_orders, p_items_per_order, c_base_updated_at, 0
             );
 
-            exec_ignore_missing('delete from deltaplan_keys_tmp where target_table = ''' || c_target || ''' and data_segment = ''' || c_segment || '''');
-            exec_ignore_missing('delete from deltaplan_batch_tmp');
+            exec_ignore_missing('delete from dpl_keys_tmp where target_table = ''' || c_target || ''' and data_segment = ''' || c_segment || '''');
+            exec_ignore_missing('delete from dpl_batch_tmp');
 
             if l_sync then
                 mark_synced(c_base_updated_at);

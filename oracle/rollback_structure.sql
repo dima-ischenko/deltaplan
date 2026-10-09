@@ -11,11 +11,14 @@ declare
             end if;
     end;
 begin
+    drop_tbl('dpl_batch_tmp');
+    drop_tbl('dpl_keys_tmp');
+    drop_tbl('dpl_watermark');
+
+    -- leftover names from earlier layouts
     drop_tbl('deltaplan_batch_tmp');
     drop_tbl('deltaplan_keys_tmp');
     drop_tbl('deltaplan_watermark');
-
-    -- leftover names from earlier layouts
     drop_tbl('deltaplan_batch');
     drop_tbl('deltaplan_keys');
     drop_tbl('deltaplan_key');

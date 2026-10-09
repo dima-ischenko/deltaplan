@@ -6,17 +6,18 @@
 -- plus INSERT. That runs on PostgreSQL and on Greenplum 7, which has no MERGE.
 -- On PostgreSQL 15+ the same logic can be written as one MERGE.
 --
--- The routines are functions and do not commit. Wrap the run in a DO block
+-- The routines are functions and do not commit. They live in the schema
+-- used at deploy; keep that schema on search_path. Wrap the run in a DO block
 -- so the batch loop can call them with PERFORM.
--- Without batches, read deltaplan_keys_tmp and call deltaplan.finalize() at once:
---   where k.target_table = deltaplan.get_target_table()
---     and k.data_segment = deltaplan.get_data_segment()
+-- Without batches, read dpl_keys_tmp and call finalize() at once:
+--   where k.target_table = get_target_table()
+--     and k.data_segment = get_data_segment()
 
 do $run$
 begin
-    perform deltaplan.initialize('customer_metrics', 'all', 2);
+    perform initialize('customer_metrics', 'all', 2);
 
-    perform deltaplan.capture_delta('customers', $sql$
+    perform capture_delta('customers', $sql$
         with changed_customers as (
             select id, updated_at
             from customers
@@ -29,7 +30,7 @@ begin
         from changed_customers
     $sql$);
 
-    perform deltaplan.capture_delta('orders', $sql$
+    perform capture_delta('orders', $sql$
         with changed_orders as (
             select customer_id, updated_at
             from orders
@@ -43,7 +44,7 @@ begin
         group by customer_id
     $sql$);
 
-    perform deltaplan.capture_delta('order_items', $sql$
+    perform capture_delta('order_items', $sql$
         with changed_items as (
             select order_id, updated_at
             from order_items
@@ -58,9 +59,9 @@ begin
         group by o.customer_id
     $sql$);
 
-    perform deltaplan.prepare_batches(2);
+    perform prepare_batches(2);
 
-    while deltaplan.next_batch() loop
+    while next_batch() loop
         update customer_metrics t
         set min_amount = s.min_amount,
             max_amount = s.max_amount,
@@ -70,7 +71,7 @@ begin
         from (
             with changed_customers as (
                 select pk_1 as customer_id
-                from deltaplan_batch_tmp
+                from dpl_batch_tmp
                 group by pk_1
             )
             select c.id as customer_id,
@@ -94,7 +95,7 @@ begin
         from (
             with changed_customers as (
                 select pk_1 as customer_id
-                from deltaplan_batch_tmp
+                from dpl_batch_tmp
                 group by pk_1
             )
             select c.id as customer_id,
@@ -112,9 +113,9 @@ begin
             select 1 from customer_metrics t where t.customer_id = s.customer_id
         );
 
-        perform deltaplan.finish_batch();
+        perform finish_batch();
     end loop;
 
-    perform deltaplan.finalize();
+    perform finalize();
 end;
 $run$;

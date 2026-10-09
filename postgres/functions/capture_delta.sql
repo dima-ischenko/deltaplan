@@ -1,14 +1,14 @@
 -- p_lookback_hours null takes the value given to initialize.
 -- p_sql must contain :since exactly once.
 -- The placeholder is already the watermark minus the lookback offset.
-create or replace function deltaplan.capture_delta(
+create or replace function capture_delta(
     p_source_table    text,
     p_sql             text,
     p_lookback_hours  numeric default null
 )
 returns void
 language plpgsql
-set search_path = pg_temp, public as $$
+set search_path = pg_temp, :"dpl_schema", public as $$
 declare
     l_source   text := lower(p_source_table);
     l_target   text;
@@ -22,13 +22,13 @@ declare
     l_sql      text;
     l_rows     bigint;
 begin
-    if to_regclass('deltaplan_session_tmp') is null then
+    if to_regclass('dpl_session_tmp') is null then
         raise exception 'DP-20001 Call initialize first';
     end if;
 
     select target_table, data_segment, lookback_hours, batches_ready, apply_open
     into l_target, l_segment, l_lookback, l_ready, l_open
-    from deltaplan_session_tmp
+    from dpl_session_tmp
     where id = 1;
 
     if l_target is null then
@@ -56,13 +56,13 @@ begin
         raise exception 'DP-20002 lookback_hours must be >= 0';
     end if;
 
-    if l_ready or l_open or deltaplan._unfinished() > 0 then
+    if l_ready or l_open or _unfinished() > 0 then
         raise exception 'DP-20013 capture_delta is closed after prepare_batches until finalize';
     end if;
 
     select max(watermark)
     into l_stored
-    from deltaplan_watermark
+    from dpl_watermark
     where target_table = l_target
       and source_table = l_source
       and data_segment = l_segment;
@@ -73,7 +73,7 @@ begin
     l_sql := regexp_replace(p_sql, ':since\M', '$1', 'gi');
 
     execute
-        'insert into deltaplan_keys_tmp (
+        'insert into dpl_keys_tmp (
             target_table, data_segment, source_table,
             pk_1, pk_2, pk_3, watermark
         )
@@ -82,7 +82,7 @@ begin
         using l_bound, l_target, l_segment, l_source;
 
     get diagnostics l_rows = row_count;
-    raise notice 'deltaplan.capture_delta: % | source=% stored=% bound=%',
+    raise notice 'capture_delta: % | source=% stored=% bound=%',
         l_rows, l_source, l_stored, l_bound;
 end;
 $$;

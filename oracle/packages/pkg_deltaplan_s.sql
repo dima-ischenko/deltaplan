@@ -3,7 +3,7 @@ create or replace package pkg_deltaplan is
     -- p_lookback_hours moves the read bound back by N hours; fractions are allowed.
     -- The source SQL keeps a strict predicate: value > :since.
     -- Zero leaves the bound equal to the stored watermark.
-    -- deltaplan_watermark receives the watermark itself; the lookback offset is not stored.
+    -- dpl_watermark receives the watermark itself; the lookback offset is not stored.
     procedure initialize(
         p_target_table    varchar2,
         p_data_segment    varchar2 default 'all',
@@ -30,13 +30,13 @@ create or replace package pkg_deltaplan is
 
     -- Batches are optional. The target calculation is ordinary SQL.
     --
-    -- Without batches it reads every key from deltaplan_keys_tmp
+    -- Without batches it reads every key from dpl_keys_tmp
     -- (target_table = get_target_table and data_segment = get_data_segment)
     -- and finalize is called immediately afterwards.
     --
     -- With batches: prepare_batches, then the loop
-    -- next_batch / SQL against deltaplan_batch_tmp / finish_batch.
-    -- deltaplan_batch_tmp holds only the keys of the current batch.
+    -- next_batch / SQL against dpl_batch_tmp / finish_batch.
+    -- dpl_batch_tmp holds only the keys of the current batch.
     -- When p_commit is true, the captured keys are committed first,
     -- and each finish_batch commits its own batch.
     -- A later call in the same session resumes at the unfinished batch.
@@ -46,11 +46,11 @@ create or replace package pkg_deltaplan is
         p_commit      boolean default true
     );
 
-    -- Returns true when a batch is open and its keys are in deltaplan_batch_tmp.
+    -- Returns true when a batch is open and its keys are in dpl_batch_tmp.
     -- Returns false when no unfinished batch remains.
     -- Calling it again while the previous batch is still open and
-    -- deltaplan_batch_tmp is not empty raises an error.
-    -- After rollback, deltaplan_batch_tmp is empty and the next call returns the same batch.
+    -- dpl_batch_tmp is not empty raises an error.
+    -- After rollback, dpl_batch_tmp is empty and the next call returns the same batch.
     function next_batch return boolean;
 
     -- Marks the open batch complete.
@@ -58,7 +58,7 @@ create or replace package pkg_deltaplan is
     -- The log line records sql%rowcount of the preceding DML, so call this immediately after it.
     procedure finish_batch;
 
-    -- Advances deltaplan_watermark from deltaplan_keys_tmp and clears the session.
+    -- Advances dpl_watermark from dpl_keys_tmp and clears the session.
     -- Refuses while a batch is still unfinished, and does not roll that error back.
     procedure finalize;
 

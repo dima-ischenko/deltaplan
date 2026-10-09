@@ -1,6 +1,6 @@
 -- A short run: a lookback of two hours, and a target merge in batches of two keys.
--- The merge is ordinary SQL against deltaplan_batch_tmp.
--- Without batches the same merge reads deltaplan_keys_tmp and the loop is omitted:
+-- The merge is ordinary SQL against dpl_batch_tmp.
+-- Without batches the same merge reads dpl_keys_tmp and the loop is omitted:
 --   where target_table = pkg_deltaplan.get_target_table
 --     and data_segment = pkg_deltaplan.get_data_segment
 -- then call finalize at once.
@@ -71,7 +71,7 @@ begin
             using (
                 with changed_customers as (
                     select pk_1 as customer_id
-                    from deltaplan_batch_tmp
+                    from dpl_batch_tmp
                     group by pk_1
                 )
                 select c.id as customer_id,

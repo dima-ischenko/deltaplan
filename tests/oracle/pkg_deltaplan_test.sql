@@ -1,5 +1,5 @@
 -- Checks for pkg_deltaplan.
--- Requires deltaplan_watermark, deltaplan_keys_tmp, deltaplan_batch_tmp and the package itself.
+-- Requires dpl_watermark, dpl_keys_tmp, dpl_batch_tmp and the package itself.
 -- set serveroutput on size unlimited
 -- @pkg_deltaplan_test.sql
 -- exec pkg_deltaplan_test.run
@@ -54,9 +54,9 @@ create or replace package body pkg_deltaplan_test is
 
     procedure reset is
     begin
-        delete from deltaplan_keys_tmp;
-        delete from deltaplan_batch_tmp;
-        delete from deltaplan_watermark
+        delete from dpl_keys_tmp;
+        delete from dpl_batch_tmp;
+        delete from dpl_watermark
         where target_table in (c_target, 'other_tgt');
 
         delete from inc_test_a;
@@ -107,7 +107,7 @@ create or replace package body pkg_deltaplan_test is
         using (
             select k.pk_1 as id,
                    nvl(max(a.amount), 0) + nvl(max(b.amount), 0) as amount
-            from deltaplan_keys_tmp k
+            from dpl_keys_tmp k
             left join inc_test_a a on a.id = k.pk_1
             left join inc_test_b b on b.id = k.pk_1
             where k.target_table = pkg_deltaplan.get_target_table
@@ -128,7 +128,7 @@ create or replace package body pkg_deltaplan_test is
         using (
             select k.pk_1 as id,
                    nvl(max(a.amount), 0) + nvl(max(b.amount), 0) as amount
-            from deltaplan_batch_tmp k
+            from dpl_batch_tmp k
             left join inc_test_a a on a.id = k.pk_1
             left join inc_test_b b on b.id = k.pk_1
             group by k.pk_1
@@ -148,7 +148,7 @@ create or replace package body pkg_deltaplan_test is
         into l_cnt
         from (
             select distinct pk_1, pk_2, pk_3
-            from deltaplan_keys_tmp
+            from dpl_keys_tmp
             where target_table = c_target
               and data_segment = 'all'
         );
@@ -161,7 +161,7 @@ create or replace package body pkg_deltaplan_test is
     begin
         select watermark
         into l_value
-        from deltaplan_watermark
+        from dpl_watermark
         where target_table = c_target
           and data_segment = 'all'
           and source_table = p_source;
@@ -188,7 +188,7 @@ create or replace package body pkg_deltaplan_test is
     begin
         select listagg(pk_1, ',') within group (order by pk_1)
         into l_ids
-        from deltaplan_batch_tmp;
+        from dpl_batch_tmp;
 
         return l_ids;
     end ids_in_batch;
@@ -209,7 +209,7 @@ create or replace package body pkg_deltaplan_test is
     begin
         select count(*)
         into l_cnt
-        from deltaplan_watermark
+        from dpl_watermark
         where target_table = p_target;
 
         return to_char(l_cnt);
@@ -229,7 +229,7 @@ create or replace package body pkg_deltaplan_test is
         add_row('inc_test_b', '3', 7, c_t1);
         capture_both;
 
-        insert into deltaplan_keys_tmp (
+        insert into dpl_keys_tmp (
             target_table, data_segment, source_table,
             pk_1, pk_2, pk_3, watermark
         ) values (
@@ -270,7 +270,7 @@ create or replace package body pkg_deltaplan_test is
         eq('static delta wm a', wm('inc_test_a'), '2024-02-01 00:00:00');
         eq('static delta wm b', wm('inc_test_b'), '2024-01-15 10:00:00');
 
-        delete from deltaplan_keys_tmp where target_table = 'other_tgt';
+        delete from dpl_keys_tmp where target_table = 'other_tgt';
         pass('static_without_batches');
     end test_static_without_batches;
 
@@ -278,7 +278,7 @@ create or replace package body pkg_deltaplan_test is
     begin
         reset;
 
-        insert into deltaplan_watermark (
+        insert into dpl_watermark (
             target_table, data_segment, source_table, watermark, updated_at
         ) values (
             c_target, 'all', 'inc_test_a', c_noon, sysdate
@@ -319,7 +319,7 @@ create or replace package body pkg_deltaplan_test is
 
             insert into inc_test_seen (batch_no, id)
             select l_no, pk_1
-            from deltaplan_batch_tmp;
+            from dpl_batch_tmp;
 
             merge_batch;
 
@@ -367,7 +367,7 @@ create or replace package body pkg_deltaplan_test is
         from inc_test_tgt;
 
         delete from inc_test_tgt;
-        delete from deltaplan_watermark
+        delete from dpl_watermark
         where target_table = c_target;
         commit;
 
@@ -601,10 +601,10 @@ create or replace package body pkg_deltaplan_test is
             fail('one pk', 'missing batch');
         end if;
 
-        select count(*) into l_rows from deltaplan_batch_tmp;
+        select count(*) into l_rows from dpl_batch_tmp;
         select count(*)
         into l_temp
-        from deltaplan_keys_tmp
+        from dpl_keys_tmp
         where target_table = c_target
           and data_segment = 'all';
 

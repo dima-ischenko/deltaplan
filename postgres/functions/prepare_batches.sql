@@ -1,16 +1,16 @@
--- Batches are optional. Without them the refresh statement reads deltaplan_keys_tmp.
--- With them: prepare_batches, then next_batch / SQL on deltaplan_batch_tmp / finish_batch.
+-- Batches are optional. Without them the refresh statement reads dpl_keys_tmp.
+-- With them: prepare_batches, then next_batch / SQL on dpl_batch_tmp / finish_batch.
 -- This function does not commit. Commit after prepare_batches if a later
 -- rollback should keep the captured keys, and after each finish_batch if
 -- a later rollback should keep that batch. next_batch, the refresh statement
--- and finish_batch stay in one transaction: deltaplan_batch_tmp is
+-- and finish_batch stay in one transaction: dpl_batch_tmp is
 -- ON COMMIT DELETE ROWS.
-create or replace function deltaplan.prepare_batches(
+create or replace function prepare_batches(
     p_batch_size  numeric default 5000
 )
 returns void
 language plpgsql
-set search_path = pg_temp, public as $$
+set search_path = pg_temp, :"dpl_schema", public as $$
 declare
     l_target    text;
     l_segment   text;
@@ -23,7 +23,7 @@ declare
 begin
     select target_table, data_segment, batch_size, batch_no
     into l_target, l_segment, l_size, l_batch_no
-    from deltaplan_session_tmp
+    from dpl_session_tmp
     where id = 1;
 
     if l_target is null then
@@ -35,7 +35,7 @@ begin
 
     select exists (
         select 1
-        from deltaplan_keys_tmp
+        from dpl_keys_tmp
         where target_table = l_target
           and data_segment = l_segment
           and batch_no is not null
@@ -46,7 +46,7 @@ begin
     end if;
 
     if l_batch_no is not null then
-        select exists (select 1 from deltaplan_batch_tmp) into l_open_rows;
+        select exists (select 1 from dpl_batch_tmp) into l_open_rows;
         if l_open_rows then
             raise exception 'DP-20014 batch % is open; call finish_batch', l_batch_no;
         end if;
@@ -56,12 +56,12 @@ begin
     into l_keys
     from (
         select distinct pk_1, pk_2, pk_3
-        from deltaplan_keys_tmp
+        from dpl_keys_tmp
         where target_table = l_target
           and data_segment = l_segment
     ) k;
 
-    update deltaplan_session_tmp
+    update dpl_session_tmp
     set batches_ready = true,
         batch_no = null,
         batch_size = case when l_keys = 0 then batch_size else p_batch_size end,
@@ -69,12 +69,12 @@ begin
     where id = 1;
 
     if l_keys = 0 then
-        raise notice 'deltaplan.prepare_batches: 0 | no keys, nothing to apply';
+        raise notice 'prepare_batches: 0 | no keys, nothing to apply';
         return;
     end if;
 
     if not l_assigned then
-        update deltaplan_keys_tmp t
+        update dpl_keys_tmp t
         set batch_no = s.batch_no,
             batch_done = 0
         from (
@@ -84,7 +84,7 @@ begin
                    )::numeric / p_batch_size) as batch_no
             from (
                 select distinct pk_1, pk_2, pk_3
-                from deltaplan_keys_tmp
+                from dpl_keys_tmp
                 where target_table = l_target
                   and data_segment = l_segment
             ) d
@@ -101,18 +101,18 @@ begin
             raise exception 'DP-20011 batch numbers were not assigned';
         end if;
 
-        raise notice 'deltaplan.prepare_batches: % | assigned batch_no batch_size=% distinct_pk=%',
+        raise notice 'prepare_batches: % | assigned batch_no batch_size=% distinct_pk=%',
             l_updated, p_batch_size, l_keys;
     else
-        raise notice 'deltaplan.prepare_batches: % | resume batch_size=%', l_keys, l_size;
+        raise notice 'prepare_batches: % | resume batch_size=%', l_keys, l_size;
     end if;
 
-    if deltaplan._unfinished() = 0 then
-        update deltaplan_session_tmp set apply_open = false where id = 1;
-        raise notice 'deltaplan.prepare_batches: 0 | nothing left to apply';
+    if _unfinished() = 0 then
+        update dpl_session_tmp set apply_open = false where id = 1;
+        raise notice 'prepare_batches: 0 | nothing left to apply';
         return;
     end if;
 
-    update deltaplan_session_tmp set apply_open = true where id = 1;
+    update dpl_session_tmp set apply_open = true where id = 1;
 end;
 $$;

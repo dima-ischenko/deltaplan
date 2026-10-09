@@ -11,9 +11,9 @@ begin execute immediate 'drop package pkg_deltaplan_test'; exception when others
 /
 @@../../oracle/rollback_code.sql
 @@../../oracle/rollback_structure.sql
-@@../../oracle/ddl_dml/deltaplan_watermark.sql
-@@../../oracle/ddl_dml/deltaplan_keys_tmp.sql
-@@../../oracle/ddl_dml/deltaplan_batch_tmp.sql
+@@../../oracle/ddl_dml/dpl_watermark.sql
+@@../../oracle/ddl_dml/dpl_keys_tmp.sql
+@@../../oracle/ddl_dml/dpl_batch_tmp.sql
 @@../../oracle/packages/pkg_deltaplan_s.sql
 /
 @@../../oracle/packages/pkg_deltaplan_b.sql

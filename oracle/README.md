@@ -6,7 +6,7 @@ The steps are the same as in the [root README](../README.md): `initialize`, `cap
 
 ## A run without batches
 
-The merge reads `deltaplan_keys_tmp`, restricted to the current target and segment:
+The merge reads `dpl_keys_tmp`, restricted to the current target and segment:
 
 ```sql
 declare
@@ -62,7 +62,7 @@ begin
         using (
             with changed as (
                 select pk_1 as customer_id
-                from deltaplan_keys_tmp
+                from dpl_keys_tmp
                 where target_table = pkg_deltaplan.get_target_table
                   and data_segment = pkg_deltaplan.get_data_segment
                 group by pk_1
@@ -99,7 +99,7 @@ end;
 
 ## A run in batches
 
-The merge is the same, except that it reads `deltaplan_batch_tmp` and does not filter on target or segment: those keys already belong to the open batch.
+The merge is the same, except that it reads `dpl_batch_tmp` and does not filter on target or segment: those keys already belong to the open batch.
 
 ```sql
 declare
@@ -157,7 +157,7 @@ begin
             using (
                 with changed as (
                     select pk_1 as customer_id
-                    from deltaplan_batch_tmp
+                    from dpl_batch_tmp
                     group by pk_1
                 )
                 select c.id as customer_id,
@@ -199,6 +199,6 @@ A session with three sources is in `examples/oracle/example_customer_metrics.sql
 
 When `p_commit` is true, which is the default, the captured keys are committed first and each `finish_batch` commits its own batch. A later call in the same session resumes at the unfinished batch.
 
-The package keeps its position in the session, so a rollback does not forget which batch was open. After a rollback `deltaplan_batch_tmp` is empty, and the next `next_batch` returns that same batch.
+The package keeps its position in the session, so a rollback does not forget which batch was open. After a rollback `dpl_batch_tmp` is empty, and the next `next_batch` returns that same batch.
 
 The `finish_batch` log line records `sql%rowcount` of the preceding statement, so call it immediately after the refresh statement.

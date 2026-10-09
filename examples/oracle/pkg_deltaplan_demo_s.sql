@@ -2,7 +2,7 @@ create or replace package pkg_deltaplan_demo is
 
     -- 100,000 customers, 1,000,000 orders and 30 items each: 30,000,000 order_items.
     -- The base updated_at is 2024-01-15 10:00:00.
-    -- When p_mark_synced is true, that instant is written to deltaplan_watermark,
+    -- When p_mark_synced is true, that instant is written to dpl_watermark,
     -- so the next run loads only the delta planted afterwards.
     procedure load_base(
         p_customers       number  default 100000,
