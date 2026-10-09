@@ -102,8 +102,24 @@ This creates `deltaplan_watermark`, the two global temporary tables, and `pkg_de
 A run without batches. The merge reads `deltaplan_keys_tmp`, restricted to the current target and segment:
 
 ```sql
+declare
+    l_change_date date;
 begin
     pkg_deltaplan.initialize('customer_metrics', 'all', 2);
+
+    pkg_deltaplan.capture_delta('customers', q'[
+        with changed_customers as (
+            select id, updated_at
+            from customers
+            where updated_at > :since
+        )
+        select id as pk_1,
+               null as pk_2,
+               null as pk_3,
+               updated_at as watermark
+        from changed_customers
+    ]');
+
     pkg_deltaplan.capture_delta('orders', q'[
         with changed_orders as (
             select customer_id, updated_at
@@ -117,6 +133,23 @@ begin
         from changed_orders
         group by customer_id
     ]');
+
+    pkg_deltaplan.capture_delta('order_items', q'[
+        with changed_items as (
+            select order_id, updated_at
+            from order_items
+            where updated_at > :since
+        )
+        select o.customer_id as pk_1,
+               null          as pk_2,
+               null          as pk_3,
+               max(ci.updated_at) as watermark
+        from changed_items ci
+        join orders o on o.id = ci.order_id
+        group by o.customer_id
+    ]');
+
+    l_change_date := sysdate;
 
     merge into customer_metrics t
         using (
@@ -140,17 +173,17 @@ begin
         ) s
         on (s.customer_id = t.customer_id)
         when matched then update set
-            t.min_amount    = s.min_amount,
-            t.max_amount    = s.max_amount,
-            t.avg_amount    = s.avg_amount,
-            t.cnt_completed = s.cnt_completed,
-            t.mt_change_date = sysdate
+            t.min_amount     = s.min_amount,
+            t.max_amount     = s.max_amount,
+            t.avg_amount     = s.avg_amount,
+            t.cnt_completed  = s.cnt_completed,
+            t.mt_change_date = l_change_date
         when not matched then insert (
             customer_id, min_amount, max_amount, avg_amount,
             cnt_completed, mt_change_date
         ) values (
             s.customer_id, s.min_amount, s.max_amount, s.avg_amount,
-            s.cnt_completed, sysdate
+            s.cnt_completed, l_change_date
         );
 
     pkg_deltaplan.finalize;
@@ -160,8 +193,24 @@ end;
 A run in batches. The merge is the same, except that it reads `deltaplan_batch_tmp` and does not filter on target or segment: those keys already belong to the open batch.
 
 ```sql
+declare
+    l_change_date date;
 begin
     pkg_deltaplan.initialize('customer_metrics', 'all', 2);
+
+    pkg_deltaplan.capture_delta('customers', q'[
+        with changed_customers as (
+            select id, updated_at
+            from customers
+            where updated_at > :since
+        )
+        select id as pk_1,
+               null as pk_2,
+               null as pk_3,
+               updated_at as watermark
+        from changed_customers
+    ]');
+
     pkg_deltaplan.capture_delta('orders', q'[
         with changed_orders as (
             select customer_id, updated_at
@@ -176,6 +225,22 @@ begin
         group by customer_id
     ]');
 
+    pkg_deltaplan.capture_delta('order_items', q'[
+        with changed_items as (
+            select order_id, updated_at
+            from order_items
+            where updated_at > :since
+        )
+        select o.customer_id as pk_1,
+               null          as pk_2,
+               null          as pk_3,
+               max(ci.updated_at) as watermark
+        from changed_items ci
+        join orders o on o.id = ci.order_id
+        group by o.customer_id
+    ]');
+
+    l_change_date := sysdate;
     pkg_deltaplan.prepare_batches(5000);
 
     while pkg_deltaplan.next_batch loop
@@ -199,17 +264,17 @@ begin
             ) s
             on (s.customer_id = t.customer_id)
             when matched then update set
-                t.min_amount    = s.min_amount,
-                t.max_amount    = s.max_amount,
-                t.avg_amount    = s.avg_amount,
-                t.cnt_completed = s.cnt_completed,
-                t.mt_change_date = sysdate
+                t.min_amount     = s.min_amount,
+                t.max_amount     = s.max_amount,
+                t.avg_amount     = s.avg_amount,
+                t.cnt_completed  = s.cnt_completed,
+                t.mt_change_date = l_change_date
             when not matched then insert (
                 customer_id, min_amount, max_amount, avg_amount,
                 cnt_completed, mt_change_date
             ) values (
                 s.customer_id, s.min_amount, s.max_amount, s.avg_amount,
-                s.cnt_completed, sysdate
+                s.cnt_completed, l_change_date
             );
 
         pkg_deltaplan.finish_batch;
@@ -236,65 +301,25 @@ From SQL, call them with `select`. From PL/pgSQL, use `perform`. `next_batch` re
 A run without batches. `MERGE` is available on PostgreSQL 15 and later. The statement reads `deltaplan_keys_tmp`, restricted to the current target and segment:
 
 ```sql
-select deltaplan.initialize('customer_metrics', 'all', 2);
-select deltaplan.capture_delta('orders', $sql$
-    with changed_orders as (
-        select customer_id, updated_at
-        from orders
-        where updated_at > :since
-    )
-    select customer_id as pk_1,
-           null::text  as pk_2,
-           null::text  as pk_3,
-           max(updated_at) as watermark
-    from changed_orders
-    group by customer_id
-$sql$);
-
-merge into customer_metrics t
-using (
-    with changed as (
-        select pk_1 as customer_id
-        from deltaplan_keys_tmp
-        where target_table = deltaplan.get_target_table()
-          and data_segment = deltaplan.get_data_segment()
-        group by pk_1
-    )
-    select c.id as customer_id,
-           min(oi.quantity * oi.price * (1 - o.order_discount)) as min_amount,
-           max(oi.quantity * oi.price * (1 - o.order_discount)) as max_amount,
-           avg(oi.quantity * oi.price * (1 - o.order_discount)) as avg_amount,
-           count(*) filter (where o.status = 'completed') as cnt_completed
-    from customers c
-    join changed ch on ch.customer_id = c.id
-    join orders o on o.customer_id = c.id
-    join order_items oi on oi.order_id = o.id
-    group by c.id
-) s
-on t.customer_id = s.customer_id
-when matched then update set
-    min_amount     = s.min_amount,
-    max_amount     = s.max_amount,
-    avg_amount     = s.avg_amount,
-    cnt_completed  = s.cnt_completed,
-    mt_change_date = clock_timestamp()
-when not matched then insert (
-    customer_id, min_amount, max_amount, avg_amount,
-    cnt_completed, mt_change_date
-) values (
-    s.customer_id, s.min_amount, s.max_amount, s.avg_amount,
-    s.cnt_completed, clock_timestamp()
-);
-
-select deltaplan.finalize();
-```
-
-A run in batches, inside a `DO` block. The merge is the same, except that it reads `deltaplan_batch_tmp`.
-
-```sql
 do $run$
+declare
+    v_change_date timestamptz;
 begin
     perform deltaplan.initialize('customer_metrics', 'all', 2);
+
+    perform deltaplan.capture_delta('customers', $sql$
+        with changed_customers as (
+            select id, updated_at
+            from customers
+            where updated_at > :since
+        )
+        select id as pk_1,
+               null::text as pk_2,
+               null::text as pk_3,
+               updated_at as watermark
+        from changed_customers
+    $sql$);
+
     perform deltaplan.capture_delta('orders', $sql$
         with changed_orders as (
             select customer_id, updated_at
@@ -309,6 +334,115 @@ begin
         group by customer_id
     $sql$);
 
+    perform deltaplan.capture_delta('order_items', $sql$
+        with changed_items as (
+            select order_id, updated_at
+            from order_items
+            where updated_at > :since
+        )
+        select o.customer_id as pk_1,
+               null::text    as pk_2,
+               null::text    as pk_3,
+               max(ci.updated_at) as watermark
+        from changed_items ci
+        join orders o on o.id = ci.order_id
+        group by o.customer_id
+    $sql$);
+
+    v_change_date := clock_timestamp();
+
+    merge into customer_metrics t
+    using (
+        with changed as (
+            select pk_1 as customer_id
+            from deltaplan_keys_tmp
+            where target_table = deltaplan.get_target_table()
+              and data_segment = deltaplan.get_data_segment()
+            group by pk_1
+        )
+        select c.id as customer_id,
+               min(oi.quantity * oi.price * (1 - o.order_discount)) as min_amount,
+               max(oi.quantity * oi.price * (1 - o.order_discount)) as max_amount,
+               avg(oi.quantity * oi.price * (1 - o.order_discount)) as avg_amount,
+               count(*) filter (where o.status = 'completed') as cnt_completed
+        from customers c
+        join changed ch on ch.customer_id = c.id
+        join orders o on o.customer_id = c.id
+        join order_items oi on oi.order_id = o.id
+        group by c.id
+    ) s
+    on t.customer_id = s.customer_id
+    when matched then update set
+        min_amount     = s.min_amount,
+        max_amount     = s.max_amount,
+        avg_amount     = s.avg_amount,
+        cnt_completed  = s.cnt_completed,
+        mt_change_date = v_change_date
+    when not matched then insert (
+        customer_id, min_amount, max_amount, avg_amount,
+        cnt_completed, mt_change_date
+    ) values (
+        s.customer_id, s.min_amount, s.max_amount, s.avg_amount,
+        s.cnt_completed, v_change_date
+    );
+
+    perform deltaplan.finalize();
+end;
+$run$;
+```
+
+A run in batches, inside a `DO` block. The merge is the same, except that it reads `deltaplan_batch_tmp`.
+
+```sql
+do $run$
+declare
+    v_change_date timestamptz;
+begin
+    perform deltaplan.initialize('customer_metrics', 'all', 2);
+
+    perform deltaplan.capture_delta('customers', $sql$
+        with changed_customers as (
+            select id, updated_at
+            from customers
+            where updated_at > :since
+        )
+        select id as pk_1,
+               null::text as pk_2,
+               null::text as pk_3,
+               updated_at as watermark
+        from changed_customers
+    $sql$);
+
+    perform deltaplan.capture_delta('orders', $sql$
+        with changed_orders as (
+            select customer_id, updated_at
+            from orders
+            where updated_at > :since
+        )
+        select customer_id as pk_1,
+               null::text  as pk_2,
+               null::text  as pk_3,
+               max(updated_at) as watermark
+        from changed_orders
+        group by customer_id
+    $sql$);
+
+    perform deltaplan.capture_delta('order_items', $sql$
+        with changed_items as (
+            select order_id, updated_at
+            from order_items
+            where updated_at > :since
+        )
+        select o.customer_id as pk_1,
+               null::text    as pk_2,
+               null::text    as pk_3,
+               max(ci.updated_at) as watermark
+        from changed_items ci
+        join orders o on o.id = ci.order_id
+        group by o.customer_id
+    $sql$);
+
+    v_change_date := clock_timestamp();
     perform deltaplan.prepare_batches(5000);
 
     while deltaplan.next_batch() loop
@@ -336,13 +470,13 @@ begin
             max_amount     = s.max_amount,
             avg_amount     = s.avg_amount,
             cnt_completed  = s.cnt_completed,
-            mt_change_date = clock_timestamp()
+            mt_change_date = v_change_date
         when not matched then insert (
             customer_id, min_amount, max_amount, avg_amount,
             cnt_completed, mt_change_date
         ) values (
             s.customer_id, s.min_amount, s.max_amount, s.avg_amount,
-            s.cnt_completed, clock_timestamp()
+            s.cnt_completed, v_change_date
         );
 
         perform deltaplan.finish_batch();
