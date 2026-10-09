@@ -1,0 +1,15 @@
+------- functions
+\ir functions/_ensure_temp.sql
+\ir functions/get_target_table.sql
+\ir functions/get_data_segment.sql
+\ir functions/get_lookback_hours.sql
+\ir functions/get_batch_no.sql
+\ir functions/_unfinished.sql
+\ir functions/_unassigned.sql
+\ir functions/_batch_total.sql
+\ir functions/initialize.sql
+\ir functions/capture_delta.sql
+\ir functions/prepare_batches.sql
+\ir functions/next_batch.sql
+\ir functions/finish_batch.sql
+\ir functions/finalize.sql

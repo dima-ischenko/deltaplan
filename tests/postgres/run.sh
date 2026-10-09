@@ -10,7 +10,7 @@ password="${PGPASSWORD:-test_pass}"
 database="${PGDATABASE:-test_db}"
 
 docker exec "$container" mkdir -p /tmp/deltaplan/postgres /tmp/deltaplan/tests/postgres
-docker cp postgres/deltaplan.sql "$container:/tmp/deltaplan/postgres/deltaplan.sql"
+docker cp postgres/. "$container:/tmp/deltaplan/postgres"
 docker cp tests/postgres/deltaplan_test.sql "$container:/tmp/deltaplan/tests/postgres/deltaplan_test.sql"
 docker cp tests/postgres/run.sql "$container:/tmp/deltaplan/tests/postgres/run.sql"
 docker exec -e PGPASSWORD="$password" "$container" \

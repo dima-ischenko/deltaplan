@@ -5,7 +5,7 @@
 drop schema if exists deltaplan_test cascade;
 drop table if exists deltaplan_watermark;
 drop table if exists deltaplan_mark;
-\ir ../../postgres/deltaplan.sql
+\ir ../../postgres/install.sql
 
 drop table if exists public.inc_test_seen;
 drop table if exists public.inc_test_expect;

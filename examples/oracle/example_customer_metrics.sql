@@ -16,38 +16,50 @@ begin
     pkg_deltaplan.capture_delta(
         p_source_table => 'customers',
         p_sql => q'[
+            with changed_customers as (
+                select id, updated_at
+                from customers
+                where updated_at > :since
+            )
             select id as pk_1,
                    null as pk_2,
                    null as pk_3,
                    updated_at as watermark
-            from customers
-            where updated_at > :since
+            from changed_customers
         ]'
     );
 
     pkg_deltaplan.capture_delta(
         p_source_table => 'orders',
         p_sql => q'[
-            select o.customer_id as pk_1,
+            with changed_orders as (
+                select customer_id, updated_at
+                from orders
+                where updated_at > :since
+            )
+            select customer_id as pk_1,
                    null as pk_2,
                    null as pk_3,
-                   max(o.updated_at) as watermark
-            from orders o
-            where o.updated_at > :since
-            group by o.customer_id
+                   max(updated_at) as watermark
+            from changed_orders
+            group by customer_id
         ]'
     );
 
     pkg_deltaplan.capture_delta(
         p_source_table => 'order_items',
         p_sql => q'[
+            with changed_items as (
+                select order_id, updated_at
+                from order_items
+                where updated_at > :since
+            )
             select o.customer_id as pk_1,
                    null as pk_2,
                    null as pk_3,
-                   max(oi.updated_at) as watermark
-            from order_items oi
-            join orders o on o.id = oi.order_id
-            where oi.updated_at > :since
+                   max(ci.updated_at) as watermark
+            from changed_items ci
+            join orders o on o.id = ci.order_id
             group by o.customer_id
         ]'
     );

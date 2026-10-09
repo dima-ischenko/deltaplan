@@ -49,7 +49,7 @@ create or replace procedure deltaplan_test.reset()
 language plpgsql as $$
 begin
     set search_path = pg_temp, public;
-    call deltaplan.initialize('inc_test_tgt', 'all', 0);
+    perform deltaplan.initialize('inc_test_tgt', 'all', 0);
     delete from deltaplan_keys_tmp;
     delete from deltaplan_batch_tmp;
     delete from deltaplan_watermark
@@ -78,7 +78,7 @@ $$;
 create or replace procedure deltaplan_test.capture_source(p_table text)
 language plpgsql as $$
 begin
-    call deltaplan.capture_delta(
+    perform deltaplan.capture_delta(
         p_table,
         format(
             'select id as pk_1, null::text as pk_2, null::text as pk_3, '
@@ -276,17 +276,17 @@ begin
     call deltaplan_test.eq('static batch no', deltaplan.get_batch_no()::text, null);
     call deltaplan_test.merge_all();
     call deltaplan_test.eq('static tgt', deltaplan_test.tgt_state(), '1:10:1,2:25:1,3:7:1');
-    call deltaplan.finalize();
+    perform deltaplan.finalize();
     call deltaplan_test.eq('static wm a', deltaplan_test.wm('inc_test_a'), '2024-01-15 10:00:00');
     call deltaplan_test.eq('static wm b', deltaplan_test.wm('inc_test_b'), '2024-01-15 10:00:00');
     call deltaplan_test.eq('static other tracking', deltaplan_test.tracking_count('other_tgt'), '0');
     call deltaplan_test.eq('static closed', deltaplan.get_target_table(), null);
 
-    call deltaplan.initialize('inc_test_tgt', 'all', 0);
+    perform deltaplan.initialize('inc_test_tgt', 'all', 0);
     call deltaplan_test.capture_both();
     call deltaplan_test.eq('static second keys', deltaplan_test.key_count(), '0');
     call deltaplan_test.merge_all();
-    call deltaplan.finalize();
+    perform deltaplan.finalize();
     call deltaplan_test.eq('static second wm a', deltaplan_test.wm('inc_test_a'), '2024-01-15 10:00:00');
     call deltaplan_test.eq('static second tgt', deltaplan_test.tgt_state(), '1:10:1,2:25:1,3:7:1');
 
@@ -295,11 +295,11 @@ begin
         updated_at = c_t2
     where id = '2';
 
-    call deltaplan.initialize('inc_test_tgt', 'all', 0);
+    perform deltaplan.initialize('inc_test_tgt', 'all', 0);
     call deltaplan_test.capture_both();
     call deltaplan_test.eq('static delta keys', deltaplan_test.key_count(), '1');
     call deltaplan_test.merge_all();
-    call deltaplan.finalize();
+    perform deltaplan.finalize();
     call deltaplan_test.eq('static delta tgt', deltaplan_test.tgt_state(), '1:10:1,2:55:2,3:7:1');
     call deltaplan_test.eq('static delta wm a', deltaplan_test.wm('inc_test_a'), '2024-02-01 00:00:00');
     call deltaplan_test.eq('static delta wm b', deltaplan_test.wm('inc_test_b'), '2024-01-15 10:00:00');
@@ -313,12 +313,12 @@ begin
     call deltaplan_test.add_row('inc_test_a', 'd', 1, timestamp '2024-06-01 10:00:00');
     call deltaplan_test.add_row('inc_test_a', 'b', 1, timestamp '2024-06-01 11:00:00');
     call deltaplan_test.add_row('inc_test_a', 'c', 1, timestamp '2024-06-01 13:00:00');
-    call deltaplan.initialize('inc_test_tgt', 'all', 2);
+    perform deltaplan.initialize('inc_test_tgt', 'all', 2);
     call deltaplan_test.capture_source('inc_test_a');
     call deltaplan_test.eq('lookback keys', deltaplan_test.key_count(), '2');
     call deltaplan_test.merge_all();
     call deltaplan_test.eq('lookback tgt', deltaplan_test.tgt_state(), 'b:1:1,c:1:1');
-    call deltaplan.finalize();
+    perform deltaplan.finalize();
     call deltaplan_test.eq('lookback wm', deltaplan_test.wm('inc_test_a'), '2024-06-01 13:00:00');
     call deltaplan_test.pass('lookback_window');
 
@@ -330,7 +330,7 @@ begin
     call deltaplan_test.add_row('inc_test_a', 'd', 4, c_t1);
     call deltaplan_test.add_row('inc_test_a', 'e', 5, c_t1);
     call deltaplan_test.capture_source('inc_test_a');
-    call deltaplan.prepare_batches(2);
+    perform deltaplan.prepare_batches(2);
     l_step := 0;
     while deltaplan.next_batch() loop
         l_step := l_step + 1;
@@ -344,7 +344,7 @@ begin
             call deltaplan_test.eq('open tgt', deltaplan_test.tgt_state(), 'a:1:1,b:2:1');
             call deltaplan_test.eq('open wm', deltaplan_test.wm('inc_test_a'), null);
         end if;
-        call deltaplan.finish_batch();
+        perform deltaplan.finish_batch();
     end loop;
     call deltaplan_test.eq('batches', l_step::text, '3');
     call deltaplan_test.eq('seen 1', deltaplan_test.seen(1), 'a,b');
@@ -352,7 +352,7 @@ begin
     call deltaplan_test.eq('seen 3', deltaplan_test.seen(3), 'e');
     call deltaplan_test.eq('batch tgt before finalize', deltaplan_test.tgt_state(), 'a:1:1,b:2:1,c:3:1,d:4:1,e:5:1');
     call deltaplan_test.eq('batch wm before finalize', deltaplan_test.wm('inc_test_a'), null);
-    call deltaplan.finalize();
+    perform deltaplan.finalize();
     call deltaplan_test.eq('batch wm', deltaplan_test.wm('inc_test_a'), '2024-01-15 10:00:00');
     call deltaplan_test.pass('static_batches');
 
@@ -364,7 +364,7 @@ begin
     call deltaplan_test.add_row('inc_test_b', 'c', 4, c_t1);
     call deltaplan_test.capture_both();
     call deltaplan_test.merge_all();
-    call deltaplan.finalize();
+    perform deltaplan.finalize();
     l_wm_a := deltaplan_test.wm('inc_test_a');
     l_wm_b := deltaplan_test.wm('inc_test_b');
     delete from inc_test_expect;
@@ -374,14 +374,14 @@ begin
     delete from deltaplan_watermark where target_table = 'inc_test_tgt';
     commit;
 
-    call deltaplan.initialize('inc_test_tgt', 'all', 0);
+    perform deltaplan.initialize('inc_test_tgt', 'all', 0);
     call deltaplan_test.capture_both();
-    call deltaplan.prepare_batches(1);
+    perform deltaplan.prepare_batches(1);
     while deltaplan.next_batch() loop
         call deltaplan_test.merge_batch();
-        call deltaplan.finish_batch();
+        perform deltaplan.finish_batch();
     end loop;
-    call deltaplan.finalize();
+    perform deltaplan.finalize();
 
     select count(*)::integer
     into l_diff
@@ -405,12 +405,16 @@ begin
     call deltaplan_test.add_row('inc_test_a', 'b', 2, c_t1);
     call deltaplan_test.add_row('inc_test_a', 'c', 3, c_t1);
     call deltaplan_test.capture_source('inc_test_a');
-    call deltaplan.prepare_batches(2);
+    perform deltaplan.prepare_batches(2);
+    -- The engine does not commit. Persist the first batch so a later
+    -- rollback of the open batch can resume.
+    commit;
     if not deltaplan.next_batch() then
         call deltaplan_test.fail('resume', 'missing first batch');
     end if;
     call deltaplan_test.merge_batch();
-    call deltaplan.finish_batch();
+    perform deltaplan.finish_batch();
+    commit;
     call deltaplan_test.eq('resume after first', deltaplan_test.tgt_state(), 'a:1:1,b:2:1');
     if not deltaplan.next_batch() then
         call deltaplan_test.fail('resume', 'missing second batch');
@@ -426,12 +430,12 @@ begin
     call deltaplan_test.eq('resume batch no', deltaplan.get_batch_no()::integer::text, l_no::integer::text);
     call deltaplan_test.eq('resume keys', deltaplan_test.ids_in_batch(), l_ids);
     call deltaplan_test.merge_batch();
-    call deltaplan.finish_batch();
+    perform deltaplan.finish_batch();
     if deltaplan.next_batch() then
         call deltaplan_test.fail('resume', 'unexpected extra batch');
     end if;
     call deltaplan_test.eq('resume wm still old', deltaplan_test.wm('inc_test_a'), null);
-    call deltaplan.finalize();
+    perform deltaplan.finalize();
     call deltaplan_test.eq('resume tgt', deltaplan_test.tgt_state(), 'a:1:1,b:2:1,c:3:1');
     call deltaplan_test.eq('resume wm', deltaplan_test.wm('inc_test_a'), '2024-01-15 10:00:00');
     call deltaplan_test.pass('resume_same_batch');
@@ -442,46 +446,43 @@ begin
     call deltaplan_test.add_row('inc_test_a', 'b', 1, c_t1);
     call deltaplan_test.add_row('inc_test_a', 'c', 1, c_t1);
     call deltaplan_test.capture_source('inc_test_a');
-    call deltaplan.prepare_batches(2);
+    perform deltaplan.prepare_batches(2);
     if not deltaplan.next_batch() then
         call deltaplan_test.fail('guard finalize', 'missing batch');
     end if;
-    call deltaplan_test.expect_dp('guard finalize', 'DP-20005', 'call deltaplan.finalize()');
+    call deltaplan_test.expect_dp('guard finalize', 'DP-20005', 'select deltaplan.finalize()');
     call deltaplan_test.merge_batch();
-    call deltaplan.finish_batch();
+    perform deltaplan.finish_batch();
     while deltaplan.next_batch() loop
         call deltaplan_test.merge_batch();
-        call deltaplan.finish_batch();
+        perform deltaplan.finish_batch();
     end loop;
-    call deltaplan.finalize();
+    perform deltaplan.finalize();
     call deltaplan_test.eq('guard tgt', deltaplan_test.tgt_state(), 'a:1:1,b:1:1,c:1:1');
 
     call deltaplan_test.reset();
     call deltaplan_test.add_row('inc_test_a', 'a', 1, c_t1);
     call deltaplan_test.add_row('inc_test_a', 'b', 1, c_t1);
     call deltaplan_test.capture_source('inc_test_a');
-    call deltaplan.prepare_batches(1);
+    perform deltaplan.prepare_batches(1);
     if not deltaplan.next_batch() then
         call deltaplan_test.fail('guard next', 'missing batch');
     end if;
     call deltaplan_test.expect_dp('guard next', 'DP-20014', 'select deltaplan.next_batch()');
     call deltaplan_test.merge_batch();
-    call deltaplan.finish_batch();
+    perform deltaplan.finish_batch();
     while deltaplan.next_batch() loop
         call deltaplan_test.merge_batch();
-        call deltaplan.finish_batch();
+        perform deltaplan.finish_batch();
     end loop;
-    call deltaplan.finalize();
+    perform deltaplan.finalize();
 
     call deltaplan_test.reset();
     call deltaplan_test.add_row('inc_test_a', 'a', 1, c_t1);
     call deltaplan_test.capture_source('inc_test_a');
-    call deltaplan.prepare_batches(2);
+    perform deltaplan.prepare_batches(2);
     call deltaplan_test.expect_dp(
-        'guard size', 'DP-20009', 'call deltaplan.prepare_batches(3)'
-    );
-    call deltaplan_test.expect_dp(
-        'guard commit', 'DP-20018', 'call deltaplan.prepare_batches(2, false)'
+        'guard size', 'DP-20009', 'select deltaplan.prepare_batches(3)'
     );
     call deltaplan_test.expect_dp(
         'guard capture', 'DP-20013',
@@ -489,13 +490,13 @@ begin
     );
     while deltaplan.next_batch() loop
         call deltaplan_test.merge_batch();
-        call deltaplan.finish_batch();
+        perform deltaplan.finish_batch();
     end loop;
-    call deltaplan.finalize();
+    perform deltaplan.finalize();
 
     call deltaplan_test.reset();
     call deltaplan_test.expect_dp('guard no prepare', 'DP-20016', 'select deltaplan.next_batch()');
-    call deltaplan_test.expect_dp('guard no batch', 'DP-20017', 'call deltaplan.finish_batch()');
+    call deltaplan_test.expect_dp('guard no batch', 'DP-20017', 'select deltaplan.finish_batch()');
     call deltaplan_test.pass('batch_guards');
 
     -- one primary key from two sources shares one batch
@@ -505,7 +506,7 @@ begin
     call deltaplan_test.add_row('inc_test_b', 'a', 1, c_t1);
     call deltaplan_test.add_row('inc_test_b', 'b', 2, c_t1);
     call deltaplan_test.capture_both();
-    call deltaplan.prepare_batches(10);
+    perform deltaplan.prepare_batches(10);
     if not deltaplan.next_batch() then
         call deltaplan_test.fail('one pk', 'missing batch');
     end if;
@@ -518,27 +519,28 @@ begin
     call deltaplan_test.eq('one pk batch rows', l_rows::text, '2');
     call deltaplan_test.eq('one pk temp rows', l_temp::text, '4');
     call deltaplan_test.merge_batch();
-    call deltaplan.finish_batch();
+    perform deltaplan.finish_batch();
     if deltaplan.next_batch() then
         call deltaplan_test.fail('one pk', 'second batch');
     end if;
-    call deltaplan.finalize();
+    perform deltaplan.finalize();
     call deltaplan_test.eq('one pk tgt', deltaplan_test.tgt_state(), 'a:11:1,b:22:1');
     call deltaplan_test.pass('one_pk_one_batch');
 
-    -- p_commit false: rollback drops the target rows and does not move the watermark
+    -- No commit after the load: rollback drops the target rows and does not
+    -- move the watermark. The engine never commits on PostgreSQL.
     call deltaplan_test.reset();
     call deltaplan_test.add_row('inc_test_a', 'a', 1, c_t1);
     call deltaplan_test.add_row('inc_test_a', 'b', 2, c_t1);
     call deltaplan_test.capture_source('inc_test_a');
-    call deltaplan.prepare_batches(1, false);
+    perform deltaplan.prepare_batches(1);
     while deltaplan.next_batch() loop
         call deltaplan_test.merge_batch();
-        call deltaplan.finish_batch();
+        perform deltaplan.finish_batch();
     end loop;
     rollback;
     call deltaplan_test.eq('rollback tgt', deltaplan_test.tgt_state(), null);
-    call deltaplan.finalize();
+    perform deltaplan.finalize();
     call deltaplan_test.eq('rollback wm', deltaplan_test.wm('inc_test_a'), null);
     call deltaplan_test.pass('rollback_without_commit');
 

@@ -84,11 +84,13 @@ The tables have the same names and the same column order on Oracle and PostgreSQ
 
 The loop is then `next_batch`, the mart statement against `deltaplan_batch_tmp`, and `finish_batch`. Call `finish_batch` immediately after that statement. `next_batch` returns false when no unfinished batch remains. Call `finalize` after the loop. It raises an error while a batch is unfinished, and that error does not roll the session back.
 
-When `p_commit` is true, which is the default, the captured keys are committed first and each `finish_batch` commits its own batch. A later call in the same session resumes at the unfinished batch. After a rollback `deltaplan_batch_tmp` is empty, and the next `next_batch` returns that same batch.
+On Oracle, when `p_commit` is true, which is the default, the captured keys are committed first and each `finish_batch` commits its own batch. A later call in the same session resumes at the unfinished batch. After a rollback `deltaplan_batch_tmp` is empty, and the next `next_batch` returns that same batch.
+
+On PostgreSQL the functions do not commit. Commit after `prepare_batches` if a later rollback should keep the captured keys, and after each `finish_batch` if it should keep that batch. `next_batch`, the mart statement, and `finish_batch` stay in one transaction: `deltaplan_batch_tmp` is emptied on commit.
 
 ## Oracle
 
-Install from `oracle/`. SQL\*Plus resolves `@@` against the working directory:
+Install from `oracle/`. SQL\*Plus resolves `@@` against the working directory. Tables live in `ddl_dml/`, the package in `packages/`, as in `rpd_data/lib` and `dwh_ato/lib`.
 
 ```bash
 cd oracle
@@ -103,12 +105,16 @@ A run without batches:
 begin
     pkg_deltaplan.initialize('customer_metrics', 'all', 2);
     pkg_deltaplan.capture_delta('orders', q'[
+        with changed_orders as (
+            select customer_id, updated_at
+            from orders
+            where updated_at > :since
+        )
         select customer_id as pk_1,
                null        as pk_2,
                null        as pk_3,
                max(updated_at) as watermark
-        from orders
-        where updated_at > :since
+        from changed_orders
         group by customer_id
     ]');
 
@@ -135,25 +141,31 @@ A complete session is in `examples/oracle/example_customer_metrics.sql`. `exampl
 
 ## PostgreSQL
 
-PostgreSQL 11 or later is required. The routines live in schema `deltaplan`. `deltaplan_watermark` is created in `public`. `initialize` creates the temporary tables for the session. If that transaction is rolled back, the temporary tables are dropped with it, and `initialize` must be called again.
+The routines are functions in schema `deltaplan`. They do not commit, so they run on PostgreSQL and on Greenplum releases that forbid a commit inside a function. `deltaplan_watermark` is created in `public`. `initialize` creates the temporary tables for the session. If that transaction is rolled back, the temporary tables are dropped with it, and `initialize` must be called again.
+
+Tables live in `ddl_dml/`, routines in `functions/`.
 
 ```bash
-psql "postgresql://user:password@localhost:5432/db" -f postgres/deltaplan.sql
+psql "postgresql://user:password@localhost:5432/db" -f postgres/install.sql
 ```
 
-`next_batch` is a function. The other routines are procedures. `next_batch`, the mart statement, and `finish_batch` must run in one transaction: a commit empties `deltaplan_batch_tmp` before the statement can read it. `finish_batch` takes an optional row count, `p_merged`, because it cannot see the caller's `ROW_COUNT`.
+From SQL, call them with `select`. From PL/pgSQL, use `perform`. `next_batch` returns boolean, so a `WHILE` loop works inside a `DO` block. `next_batch`, the mart statement, and `finish_batch` must run in one transaction: a commit empties `deltaplan_batch_tmp` before the statement can read it. `finish_batch` takes an optional row count, `p_merged`, because it cannot see the caller's `ROW_COUNT`.
 
 A run without batches:
 
 ```sql
-call deltaplan.initialize('customer_metrics', 'all', 2);
-call deltaplan.capture_delta('orders', $sql$
+select deltaplan.initialize('customer_metrics', 'all', 2);
+select deltaplan.capture_delta('orders', $sql$
+    with changed_orders as (
+        select customer_id, updated_at
+        from orders
+        where updated_at > :since
+    )
     select customer_id as pk_1,
            null::text  as pk_2,
            null::text  as pk_3,
            max(updated_at) as watermark
-    from orders
-    where updated_at > :since
+    from changed_orders
     group by customer_id
 $sql$);
 
@@ -161,25 +173,25 @@ $sql$);
 -- where target_table = deltaplan.get_target_table()
 --   and data_segment = deltaplan.get_data_segment()
 
-call deltaplan.finalize();
+select deltaplan.finalize();
 ```
 
-A run in batches:
+A run in batches, inside a `DO` block:
 
 ```sql
-call deltaplan.prepare_batches(5000);
+perform deltaplan.prepare_batches(5000);
 while deltaplan.next_batch() loop
     -- update or insert against deltaplan_batch_tmp
-    call deltaplan.finish_batch();
+    perform deltaplan.finish_batch();
 end loop;
-call deltaplan.finalize();
+perform deltaplan.finalize();
 ```
 
 A complete session is in `examples/postgres/example_customer_metrics.sql`. The load there is `UPDATE` followed by `INSERT`.
 
 ### Greenplum
 
-The same file installs on Greenplum 7, the first Greenplum release whose procedures can commit. Greenplum has no `MERGE`. `deltaplan_watermark` is `DISTRIBUTED BY (target_table)`, and the temporary key tables are `DISTRIBUTED BY (pk_1)`. The suite was run on PostgreSQL 15.4. A Greenplum cluster was not started here.
+The same file installs on Greenplum 7. The functions do not commit. Greenplum has no `MERGE`. `deltaplan_watermark` is `DISTRIBUTED BY (target_table)`, and the temporary key tables are `DISTRIBUTED BY (pk_1)`. The suite was run on PostgreSQL 15.4. A Greenplum cluster was not started here.
 
 ## Tests
 

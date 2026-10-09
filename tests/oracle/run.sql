@@ -26,12 +26,12 @@ begin execute immediate 'drop table deltaplan_watermark purge'; exception when o
 begin execute immediate 'drop table deltaplan_mark purge'; exception when others then if sqlcode != -942 then raise; end if; end;
 /
 
-@@../../oracle/deltaplan_watermark.sql
-@@../../oracle/deltaplan_keys_tmp.sql
-@@../../oracle/deltaplan_batch_tmp.sql
-@@../../oracle/pkg_deltaplan_s.sql
+@@../../oracle/ddl_dml/deltaplan_watermark.sql
+@@../../oracle/ddl_dml/deltaplan_keys_tmp.sql
+@@../../oracle/ddl_dml/deltaplan_batch_tmp.sql
+@@../../oracle/packages/pkg_deltaplan_s.sql
 /
-@@../../oracle/pkg_deltaplan_b.sql
+@@../../oracle/packages/pkg_deltaplan_b.sql
 /
 
 -- The test package names these tables in static SQL, so they must exist at compile time.
