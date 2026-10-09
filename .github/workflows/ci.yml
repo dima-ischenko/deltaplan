@@ -1,0 +1,70 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres:
+    name: PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PG_CONTAINER: deltaplan-postgres
+      PGUSER: test_user
+      PGPASSWORD: test_pass
+      PGDATABASE: test_db
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Start PostgreSQL
+        run: docker compose -f tests/docker/docker-compose.yml up --wait postgres
+
+      - name: Run PostgreSQL tests
+        run: make test-postgres
+
+      - name: PostgreSQL logs
+        if: failure()
+        run: docker compose -f tests/docker/docker-compose.yml logs postgres
+
+      - name: Stop PostgreSQL
+        if: always()
+        run: docker compose -f tests/docker/docker-compose.yml down --remove-orphans
+
+  oracle:
+    name: Oracle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ORACLE_CONTAINER: deltaplan-oracle
+      ORACLE_CONNECT: test/test_pass@//localhost:1521/FREEPDB1
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Start Oracle
+        run: docker compose -f tests/docker/docker-compose.yml up --wait oracle
+
+      - name: Run Oracle tests
+        run: make test-oracle
+
+      - name: Oracle logs
+        if: failure()
+        run: docker compose -f tests/docker/docker-compose.yml logs oracle
+
+      - name: Stop Oracle
+        if: always()
+        run: docker compose -f tests/docker/docker-compose.yml down --remove-orphans

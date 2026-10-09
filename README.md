@@ -99,7 +99,7 @@ sqlplus user/password@//host:1521/service @install.sql
 
 This creates `deltaplan_watermark`, the two global temporary tables, and `pkg_deltaplan`. The calculating user must own them. The package keeps its position in the session, so a rollback does not forget which batch was open. The `finish_batch` log line records `sql%rowcount` of the preceding statement.
 
-A run without batches:
+A run without batches. The merge reads `deltaplan_keys_tmp`, restricted to the current target and segment:
 
 ```sql
 begin
@@ -118,26 +118,108 @@ begin
         group by customer_id
     ]');
 
-    -- The mart statement reads deltaplan_keys_tmp
-    -- where target_table = pkg_deltaplan.get_target_table
-    --   and data_segment = pkg_deltaplan.get_data_segment
+    merge into customer_metrics t
+        using (
+            with changed as (
+                select pk_1 as customer_id
+                from deltaplan_keys_tmp
+                where target_table = pkg_deltaplan.get_target_table
+                  and data_segment = pkg_deltaplan.get_data_segment
+                group by pk_1
+            )
+            select c.id as customer_id,
+                   min(oi.quantity * oi.price * (1 - o.order_discount)) as min_amount,
+                   max(oi.quantity * oi.price * (1 - o.order_discount)) as max_amount,
+                   avg(oi.quantity * oi.price * (1 - o.order_discount)) as avg_amount,
+                   count(case when o.status = 'completed' then 1 end) as cnt_completed
+            from customers c
+            join changed ch on ch.customer_id = c.id
+            join orders o on o.customer_id = c.id
+            join order_items oi on oi.order_id = o.id
+            group by c.id
+        ) s
+        on (s.customer_id = t.customer_id)
+        when matched then update set
+            t.min_amount    = s.min_amount,
+            t.max_amount    = s.max_amount,
+            t.avg_amount    = s.avg_amount,
+            t.cnt_completed = s.cnt_completed,
+            t.mt_change_date = sysdate
+        when not matched then insert (
+            customer_id, min_amount, max_amount, avg_amount,
+            cnt_completed, mt_change_date
+        ) values (
+            s.customer_id, s.min_amount, s.max_amount, s.avg_amount,
+            s.cnt_completed, sysdate
+        );
 
     pkg_deltaplan.finalize;
 end;
 ```
 
-A run in batches:
+A run in batches. The merge is the same, except that it reads `deltaplan_batch_tmp` and does not filter on target or segment: those keys already belong to the open batch.
 
 ```sql
-pkg_deltaplan.prepare_batches(5000);
-while pkg_deltaplan.next_batch loop
-    -- merge, insert, update, or delete against deltaplan_batch_tmp
-    pkg_deltaplan.finish_batch;
-end loop;
-pkg_deltaplan.finalize;
+begin
+    pkg_deltaplan.initialize('customer_metrics', 'all', 2);
+    pkg_deltaplan.capture_delta('orders', q'[
+        with changed_orders as (
+            select customer_id, updated_at
+            from orders
+            where updated_at > :since
+        )
+        select customer_id as pk_1,
+               null        as pk_2,
+               null        as pk_3,
+               max(updated_at) as watermark
+        from changed_orders
+        group by customer_id
+    ]');
+
+    pkg_deltaplan.prepare_batches(5000);
+
+    while pkg_deltaplan.next_batch loop
+        merge into customer_metrics t
+            using (
+                with changed as (
+                    select pk_1 as customer_id
+                    from deltaplan_batch_tmp
+                    group by pk_1
+                )
+                select c.id as customer_id,
+                       min(oi.quantity * oi.price * (1 - o.order_discount)) as min_amount,
+                       max(oi.quantity * oi.price * (1 - o.order_discount)) as max_amount,
+                       avg(oi.quantity * oi.price * (1 - o.order_discount)) as avg_amount,
+                       count(case when o.status = 'completed' then 1 end) as cnt_completed
+                from customers c
+                join changed ch on ch.customer_id = c.id
+                join orders o on o.customer_id = c.id
+                join order_items oi on oi.order_id = o.id
+                group by c.id
+            ) s
+            on (s.customer_id = t.customer_id)
+            when matched then update set
+                t.min_amount    = s.min_amount,
+                t.max_amount    = s.max_amount,
+                t.avg_amount    = s.avg_amount,
+                t.cnt_completed = s.cnt_completed,
+                t.mt_change_date = sysdate
+            when not matched then insert (
+                customer_id, min_amount, max_amount, avg_amount,
+                cnt_completed, mt_change_date
+            ) values (
+                s.customer_id, s.min_amount, s.max_amount, s.avg_amount,
+                s.cnt_completed, sysdate
+            );
+
+        pkg_deltaplan.finish_batch;
+    end loop;
+
+    pkg_deltaplan.finalize;
+end;
 ```
 
-A complete session is in `examples/oracle/example_customer_metrics.sql`. `examples/oracle/seed_volume.sql` loads a large source and is not part of the tests.
+A session with three sources is in `examples/oracle/example_customer_metrics.sql`. `examples/oracle/seed_volume.sql` loads a large source and is not part of the tests.
 
 ## PostgreSQL
 
@@ -151,7 +233,7 @@ psql "postgresql://user:password@localhost:5432/db" -f postgres/install.sql
 
 From SQL, call them with `select`. From PL/pgSQL, use `perform`. `next_batch` returns boolean, so a `WHILE` loop works inside a `DO` block. `next_batch`, the mart statement, and `finish_batch` must run in one transaction: a commit empties `deltaplan_batch_tmp` before the statement can read it. `finish_batch` takes an optional row count, `p_merged`, because it cannot see the caller's `ROW_COUNT`.
 
-A run without batches:
+A run without batches. `MERGE` is available on PostgreSQL 15 and later. The statement reads `deltaplan_keys_tmp`, restricted to the current target and segment:
 
 ```sql
 select deltaplan.initialize('customer_metrics', 'all', 2);
@@ -169,25 +251,109 @@ select deltaplan.capture_delta('orders', $sql$
     group by customer_id
 $sql$);
 
--- The mart statement reads deltaplan_keys_tmp
--- where target_table = deltaplan.get_target_table()
---   and data_segment = deltaplan.get_data_segment()
+merge into customer_metrics t
+using (
+    with changed as (
+        select pk_1 as customer_id
+        from deltaplan_keys_tmp
+        where target_table = deltaplan.get_target_table()
+          and data_segment = deltaplan.get_data_segment()
+        group by pk_1
+    )
+    select c.id as customer_id,
+           min(oi.quantity * oi.price * (1 - o.order_discount)) as min_amount,
+           max(oi.quantity * oi.price * (1 - o.order_discount)) as max_amount,
+           avg(oi.quantity * oi.price * (1 - o.order_discount)) as avg_amount,
+           count(*) filter (where o.status = 'completed') as cnt_completed
+    from customers c
+    join changed ch on ch.customer_id = c.id
+    join orders o on o.customer_id = c.id
+    join order_items oi on oi.order_id = o.id
+    group by c.id
+) s
+on t.customer_id = s.customer_id
+when matched then update set
+    min_amount     = s.min_amount,
+    max_amount     = s.max_amount,
+    avg_amount     = s.avg_amount,
+    cnt_completed  = s.cnt_completed,
+    mt_change_date = clock_timestamp()
+when not matched then insert (
+    customer_id, min_amount, max_amount, avg_amount,
+    cnt_completed, mt_change_date
+) values (
+    s.customer_id, s.min_amount, s.max_amount, s.avg_amount,
+    s.cnt_completed, clock_timestamp()
+);
 
 select deltaplan.finalize();
 ```
 
-A run in batches, inside a `DO` block:
+A run in batches, inside a `DO` block. The merge is the same, except that it reads `deltaplan_batch_tmp`.
 
 ```sql
-perform deltaplan.prepare_batches(5000);
-while deltaplan.next_batch() loop
-    -- update or insert against deltaplan_batch_tmp
-    perform deltaplan.finish_batch();
-end loop;
-perform deltaplan.finalize();
+do $run$
+begin
+    perform deltaplan.initialize('customer_metrics', 'all', 2);
+    perform deltaplan.capture_delta('orders', $sql$
+        with changed_orders as (
+            select customer_id, updated_at
+            from orders
+            where updated_at > :since
+        )
+        select customer_id as pk_1,
+               null::text  as pk_2,
+               null::text  as pk_3,
+               max(updated_at) as watermark
+        from changed_orders
+        group by customer_id
+    $sql$);
+
+    perform deltaplan.prepare_batches(5000);
+
+    while deltaplan.next_batch() loop
+        merge into customer_metrics t
+        using (
+            with changed as (
+                select pk_1 as customer_id
+                from deltaplan_batch_tmp
+                group by pk_1
+            )
+            select c.id as customer_id,
+                   min(oi.quantity * oi.price * (1 - o.order_discount)) as min_amount,
+                   max(oi.quantity * oi.price * (1 - o.order_discount)) as max_amount,
+                   avg(oi.quantity * oi.price * (1 - o.order_discount)) as avg_amount,
+                   count(*) filter (where o.status = 'completed') as cnt_completed
+            from customers c
+            join changed ch on ch.customer_id = c.id
+            join orders o on o.customer_id = c.id
+            join order_items oi on oi.order_id = o.id
+            group by c.id
+        ) s
+        on t.customer_id = s.customer_id
+        when matched then update set
+            min_amount     = s.min_amount,
+            max_amount     = s.max_amount,
+            avg_amount     = s.avg_amount,
+            cnt_completed  = s.cnt_completed,
+            mt_change_date = clock_timestamp()
+        when not matched then insert (
+            customer_id, min_amount, max_amount, avg_amount,
+            cnt_completed, mt_change_date
+        ) values (
+            s.customer_id, s.min_amount, s.max_amount, s.avg_amount,
+            s.cnt_completed, clock_timestamp()
+        );
+
+        perform deltaplan.finish_batch();
+    end loop;
+
+    perform deltaplan.finalize();
+end;
+$run$;
 ```
 
-A complete session is in `examples/postgres/example_customer_metrics.sql`. The load there is `UPDATE` followed by `INSERT`.
+A session with three sources is in `examples/postgres/example_customer_metrics.sql`. That file uses `UPDATE` followed by `INSERT`, which also runs on Greenplum 7.
 
 ### Greenplum
 
@@ -195,30 +361,20 @@ The same file installs on Greenplum 7. The functions do not commit. Greenplum ha
 
 ## Tests
 
-Oracle, with SQL\*Plus:
-
-```bash
-make test-oracle
-```
-
-`ORACLE_CONNECT` defaults to `test/test_pass@//localhost:1521/test_db`.
-
-PostgreSQL, with `psql` inside a container. The host does not need `psql`. `tests/postgres/run.sh` copies the scripts into the container.
-
-```bash
-make test-postgres
-```
-
-`PG_CONTAINER`, `PGUSER`, `PGPASSWORD`, and `PGDATABASE` default to `postgres`, `test_user`, `test_pass`, and `test_db`.
-
-A fresh pair of databases, on ports that do not collide with 1521 and 5433:
+Both suites copy the scripts into a database container. The host does not need `sqlplus` or `psql`.
 
 ```bash
 docker compose -f tests/docker/docker-compose.yml up --wait
-ORACLE_CONNECT=test/test_pass@//localhost:1522/FREEPDB1 make test-oracle
-PG_CONTAINER=deltaplan-postgres make test-postgres
+ORACLE_CONTAINER=deltaplan-oracle \
+ORACLE_CONNECT=test/test_pass@//localhost:1521/FREEPDB1 \
+PG_CONTAINER=deltaplan-postgres \
+make test
 ```
 
+`make` without those variables uses containers named `oracle` and `postgres`. `ORACLE_CONNECT` is passed into the Oracle container, so the host port does not appear in the string.
+
 The Oracle image is [gvenzl/oracle-free](https://github.com/gvenzl/oci-oracle-free). It does not require an Oracle registry login. The first start takes several minutes.
+
+GitHub Actions runs the same suites. Open **Actions**, choose **Tests**, and run the workflow. A push and a pull request start it as well.
 
 Both suites cover a static load, the lookback window, batches, a resume after rollback, and the errors that keep a watermark in place. The passing lines are `pkg_deltaplan_test: passed` and `deltaplan_test: passed`.
