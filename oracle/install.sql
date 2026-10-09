@@ -5,8 +5,8 @@
 whenever sqlerror exit sql.sqlcode
 
 @@deltaplan_watermark.sql
-@@deltaplan_keys.sql
-@@deltaplan_batch.sql
+@@deltaplan_keys_tmp.sql
+@@deltaplan_batch_tmp.sql
 @@pkg_deltaplan_s.sql
 /
 @@pkg_deltaplan_b.sql

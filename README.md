@@ -7,8 +7,8 @@ The mart statement is ordinary SQL. Batches are optional: a small mart can be re
 ## How a run works
 
 1. Call `initialize` with the target table, a data segment (default `all`), and a lookback in hours (default `0`).
-2. Call `capture_delta` once for each source. Each call inserts keys into `deltaplan_keys`.
-3. Refresh the mart for those keys. Without batches, one statement reads `deltaplan_keys`. With batches, each statement reads `deltaplan_batch`.
+2. Call `capture_delta` once for each source. Each call inserts keys into `deltaplan_keys_tmp`.
+3. Refresh the mart for those keys. Without batches, one statement reads `deltaplan_keys_tmp`. With batches, each statement reads `deltaplan_batch_tmp`.
 4. Call `finalize`. It writes, for each source, the greatest watermark captured in this run.
 
 The capture statement must return four columns: `pk_1`, `pk_2`, `pk_3`, and `watermark`. Leave `pk_2` and `pk_3` null when the key is shorter. The statement must contain the placeholder `:since` exactly once. `:since` is the stored watermark minus the lookback; it is not the stored watermark itself. The predicate remains strict: `value > :since`. The lookback is applied when the bound is read and is not stored.
@@ -38,26 +38,26 @@ pkg_deltaplan.capture_delta('orders', q'[
 ]');
 ```
 
-The mart statement for a run without batches still restricts `deltaplan_keys` to that segment:
+The mart statement for a run without batches still restricts `deltaplan_keys_tmp` to that segment:
 
 ```sql
 where k.target_table = pkg_deltaplan.get_target_table
   and k.data_segment = pkg_deltaplan.get_data_segment
 ```
 
-`deltaplan_batch` does not store the segment: it contains only the keys of the open batch, which already belong to the current run. A second session may call `initialize` for another segment of the same target; the watermarks remain separate.
+`deltaplan_batch_tmp` does not store the segment: it contains only the keys of the open batch, which already belong to the current run. A second session may call `initialize` for another segment of the same target; the watermarks remain separate.
 
 ## Hard deletes
 
 Hard deletes are not supported.
 
-Capture can return a key only while that key still exists in the source and its watermark is greater than `:since`. A physical `DELETE` removes the source row, so the key never reaches `deltaplan_keys` and the mart row is left unchanged.
+Capture can return a key only while that key still exists in the source and its watermark is greater than `:since`. A physical `DELETE` removes the source row, so the key never reaches `deltaplan_keys_tmp` and the mart row is left unchanged.
 
 If a removal must reach the mart, keep a row in the source: a deleted flag, a tombstone, or an audit record, with a watermark that continues to move. The mart statement then deletes or updates the corresponding key.
 
 ## Tables
 
-The three tables have the same names and the same column order on Oracle and PostgreSQL.
+The tables have the same names and the same column order on Oracle and PostgreSQL. Session tables take the suffix `_tmp`, the usual warehouse marker for a temporary relation. `_gtt` is not used: it would describe Oracle only, while PostgreSQL and Greenplum use session `TEMP` tables.
 
 `deltaplan_watermark` is permanent. There is one row for each combination of target, segment, and source. `finalize` advances `watermark` and sets `updated_at`.
 
@@ -67,7 +67,7 @@ The three tables have the same names and the same column order on Oracle and Pos
 | `watermark` | Greatest source value that has been fully applied |
 | `updated_at` | Time at which `finalize` last wrote the row |
 
-`deltaplan_keys` holds every key captured in the current run. The rows survive a commit and last until the session ends. A run without batches reads this table, restricted to the current target and segment.
+`deltaplan_keys_tmp` holds every key captured in the current run. The rows survive a commit and last until the session ends. A run without batches reads this table, restricted to the current target and segment.
 
 | Column | Meaning |
 | --- | --- |
@@ -76,15 +76,15 @@ The three tables have the same names and the same column order on Oracle and Pos
 | `watermark` | Source value of this key |
 | `batch_no`, `batch_done` | Filled by `prepare_batches`. `batch_done` becomes `1` after `finish_batch` |
 
-`deltaplan_batch` holds the business key of the open batch: `pk_1`, `pk_2`, `pk_3`, in the same order as in `deltaplan_keys`. A commit empties the table. The mart statement of a batched run reads this table.
+`deltaplan_batch_tmp` holds the business key of the open batch: `pk_1`, `pk_2`, `pk_3`, in the same order as in `deltaplan_keys_tmp`. A commit empties the table. The mart statement of a batched run reads this table.
 
 ## Batches
 
 `prepare_batches` numbers the distinct keys. The default size is `5000`.
 
-The loop is then `next_batch`, the mart statement against `deltaplan_batch`, and `finish_batch`. Call `finish_batch` immediately after that statement. `next_batch` returns false when no unfinished batch remains. Call `finalize` after the loop. It raises an error while a batch is unfinished, and that error does not roll the session back.
+The loop is then `next_batch`, the mart statement against `deltaplan_batch_tmp`, and `finish_batch`. Call `finish_batch` immediately after that statement. `next_batch` returns false when no unfinished batch remains. Call `finalize` after the loop. It raises an error while a batch is unfinished, and that error does not roll the session back.
 
-When `p_commit` is true, which is the default, the captured keys are committed first and each `finish_batch` commits its own batch. A later call in the same session resumes at the unfinished batch. After a rollback `deltaplan_batch` is empty, and the next `next_batch` returns that same batch.
+When `p_commit` is true, which is the default, the captured keys are committed first and each `finish_batch` commits its own batch. A later call in the same session resumes at the unfinished batch. After a rollback `deltaplan_batch_tmp` is empty, and the next `next_batch` returns that same batch.
 
 ## Oracle
 
@@ -112,7 +112,7 @@ begin
         group by customer_id
     ]');
 
-    -- The mart statement reads deltaplan_keys
+    -- The mart statement reads deltaplan_keys_tmp
     -- where target_table = pkg_deltaplan.get_target_table
     --   and data_segment = pkg_deltaplan.get_data_segment
 
@@ -125,7 +125,7 @@ A run in batches:
 ```sql
 pkg_deltaplan.prepare_batches(5000);
 while pkg_deltaplan.next_batch loop
-    -- merge, insert, update, or delete against deltaplan_batch
+    -- merge, insert, update, or delete against deltaplan_batch_tmp
     pkg_deltaplan.finish_batch;
 end loop;
 pkg_deltaplan.finalize;
@@ -141,7 +141,7 @@ PostgreSQL 11 or later is required. The routines live in schema `deltaplan`. `de
 psql "postgresql://user:password@localhost:5432/db" -f postgres/deltaplan.sql
 ```
 
-`next_batch` is a function. The other routines are procedures. `next_batch`, the mart statement, and `finish_batch` must run in one transaction: a commit empties `deltaplan_batch` before the statement can read it. `finish_batch` takes an optional row count, `p_merged`, because it cannot see the caller's `ROW_COUNT`.
+`next_batch` is a function. The other routines are procedures. `next_batch`, the mart statement, and `finish_batch` must run in one transaction: a commit empties `deltaplan_batch_tmp` before the statement can read it. `finish_batch` takes an optional row count, `p_merged`, because it cannot see the caller's `ROW_COUNT`.
 
 A run without batches:
 
@@ -157,7 +157,7 @@ call deltaplan.capture_delta('orders', $sql$
     group by customer_id
 $sql$);
 
--- The mart statement reads deltaplan_keys
+-- The mart statement reads deltaplan_keys_tmp
 -- where target_table = deltaplan.get_target_table()
 --   and data_segment = deltaplan.get_data_segment()
 
@@ -169,7 +169,7 @@ A run in batches:
 ```sql
 call deltaplan.prepare_batches(5000);
 while deltaplan.next_batch() loop
-    -- update or insert against deltaplan_batch
+    -- update or insert against deltaplan_batch_tmp
     call deltaplan.finish_batch();
 end loop;
 call deltaplan.finalize();

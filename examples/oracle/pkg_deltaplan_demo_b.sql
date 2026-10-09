@@ -394,8 +394,8 @@ create or replace package body pkg_deltaplan_demo is
                 1, p_customers, p_orders, p_items_per_order, c_base_updated_at, 0
             );
 
-            exec_ignore_missing('delete from deltaplan_keys where target_table = ''' || c_target || ''' and data_segment = ''' || c_segment || '''');
-            exec_ignore_missing('delete from deltaplan_batch');
+            exec_ignore_missing('delete from deltaplan_keys_tmp where target_table = ''' || c_target || ''' and data_segment = ''' || c_segment || '''');
+            exec_ignore_missing('delete from deltaplan_batch_tmp');
 
             if l_sync then
                 mark_synced(c_base_updated_at);

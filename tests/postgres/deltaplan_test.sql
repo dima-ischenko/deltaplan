@@ -50,8 +50,8 @@ language plpgsql as $$
 begin
     set search_path = pg_temp, public;
     call deltaplan.initialize('inc_test_tgt', 'all', 0);
-    delete from deltaplan_keys;
-    delete from deltaplan_batch;
+    delete from deltaplan_keys_tmp;
+    delete from deltaplan_batch_tmp;
     delete from deltaplan_watermark
     where target_table in ('inc_test_tgt', 'other_tgt');
     delete from inc_test_a;
@@ -108,7 +108,7 @@ begin
     from (
         select k.pk_1 as id,
                coalesce(max(a.amount), 0) + coalesce(max(b.amount), 0) as amount
-        from deltaplan_keys k
+        from deltaplan_keys_tmp k
         left join inc_test_a a on a.id = k.pk_1
         left join inc_test_b b on b.id = k.pk_1
         where k.target_table = deltaplan.get_target_table()
@@ -122,7 +122,7 @@ begin
     from (
         select k.pk_1 as id,
                coalesce(max(a.amount), 0) + coalesce(max(b.amount), 0) as amount
-        from deltaplan_keys k
+        from deltaplan_keys_tmp k
         left join inc_test_a a on a.id = k.pk_1
         left join inc_test_b b on b.id = k.pk_1
         where k.target_table = deltaplan.get_target_table()
@@ -145,7 +145,7 @@ begin
     from (
         select k.pk_1 as id,
                coalesce(max(a.amount), 0) + coalesce(max(b.amount), 0) as amount
-        from deltaplan_batch k
+        from deltaplan_batch_tmp k
         left join inc_test_a a on a.id = k.pk_1
         left join inc_test_b b on b.id = k.pk_1
         group by k.pk_1
@@ -157,7 +157,7 @@ begin
     from (
         select k.pk_1 as id,
                coalesce(max(a.amount), 0) + coalesce(max(b.amount), 0) as amount
-        from deltaplan_batch k
+        from deltaplan_batch_tmp k
         left join inc_test_a a on a.id = k.pk_1
         left join inc_test_b b on b.id = k.pk_1
         group by k.pk_1
@@ -179,7 +179,7 @@ begin
     into l_cnt
     from (
         select distinct pk_1, pk_2, pk_3
-        from deltaplan_keys
+        from deltaplan_keys_tmp
         where target_table = 'inc_test_tgt'
           and data_segment = 'all'
     ) k;
@@ -220,7 +220,7 @@ set search_path = pg_temp, public as $$
 begin
     return (
         select string_agg(pk_1, ',' order by pk_1)
-        from deltaplan_batch
+        from deltaplan_batch_tmp
     );
 end;
 $$;
@@ -264,7 +264,7 @@ begin
     call deltaplan_test.add_row('inc_test_b', '3', 7, c_t1);
     call deltaplan_test.capture_both();
 
-    insert into deltaplan_keys (
+    insert into deltaplan_keys_tmp (
         target_table, data_segment, source_table,
         pk_1, pk_2, pk_3, watermark
     ) values (
@@ -336,7 +336,7 @@ begin
         l_step := l_step + 1;
         l_no := deltaplan.get_batch_no();
         insert into inc_test_seen (batch_no, id)
-        select l_no, pk_1 from deltaplan_batch;
+        select l_no, pk_1 from deltaplan_batch_tmp;
         call deltaplan_test.merge_batch();
         if l_step = 1 then
             call deltaplan_test.eq('open batch', l_no::integer::text, '1');
@@ -509,9 +509,9 @@ begin
     if not deltaplan.next_batch() then
         call deltaplan_test.fail('one pk', 'missing batch');
     end if;
-    select count(*)::integer into l_rows from deltaplan_batch;
+    select count(*)::integer into l_rows from deltaplan_batch_tmp;
     select count(*)::integer into l_temp
-    from deltaplan_keys
+    from deltaplan_keys_tmp
     where target_table = 'inc_test_tgt'
       and data_segment = 'all';
     call deltaplan_test.eq('one pk keys', deltaplan_test.ids_in_batch(), 'a,b');

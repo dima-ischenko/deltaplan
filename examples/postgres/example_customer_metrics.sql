@@ -7,7 +7,7 @@
 -- be written as one MERGE.
 --
 -- :since is the capture placeholder. capture_delta binds it.
--- Without batches, read deltaplan_keys and call deltaplan.finalize() at once:
+-- Without batches, read deltaplan_keys_tmp and call deltaplan.finalize() at once:
 --   where k.target_table = deltaplan.get_target_table()
 --     and k.data_segment = deltaplan.get_data_segment()
 -- PostgreSQL has no packages. next_batch() is a function; the rest are procedures.
@@ -49,7 +49,7 @@ while deltaplan.next_batch() loop
                avg(oi.quantity * oi.price * (1 - o.order_discount)) as avg_amount,
                count(case when o.status = 'completed' then 1 end) as cnt_completed
         from customers c
-        join deltaplan_batch w on w.pk_1 = c.id
+        join deltaplan_batch_tmp w on w.pk_1 = c.id
         join orders o on o.customer_id = c.id
         join order_items oi on oi.order_id = o.id
         group by c.id
@@ -68,7 +68,7 @@ while deltaplan.next_batch() loop
                avg(oi.quantity * oi.price * (1 - o.order_discount)) as avg_amount,
                count(case when o.status = 'completed' then 1 end) as cnt_completed
         from customers c
-        join deltaplan_batch w on w.pk_1 = c.id
+        join deltaplan_batch_tmp w on w.pk_1 = c.id
         join orders o on o.customer_id = c.id
         join order_items oi on oi.order_id = o.id
         group by c.id

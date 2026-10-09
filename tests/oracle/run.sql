@@ -11,7 +11,11 @@ begin execute immediate 'drop package pkg_deltaplan_test'; exception when others
 /
 begin execute immediate 'drop package pkg_deltaplan'; exception when others then if sqlcode != -4043 then raise; end if; end;
 /
+begin execute immediate 'drop table deltaplan_batch_tmp purge'; exception when others then if sqlcode != -942 then raise; end if; end;
+/
 begin execute immediate 'drop table deltaplan_batch purge'; exception when others then if sqlcode != -942 then raise; end if; end;
+/
+begin execute immediate 'drop table deltaplan_keys_tmp purge'; exception when others then if sqlcode != -942 then raise; end if; end;
 /
 begin execute immediate 'drop table deltaplan_keys purge'; exception when others then if sqlcode != -942 then raise; end if; end;
 /
@@ -23,8 +27,8 @@ begin execute immediate 'drop table deltaplan_mark purge'; exception when others
 /
 
 @@../../oracle/deltaplan_watermark.sql
-@@../../oracle/deltaplan_keys.sql
-@@../../oracle/deltaplan_batch.sql
+@@../../oracle/deltaplan_keys_tmp.sql
+@@../../oracle/deltaplan_batch_tmp.sql
 @@../../oracle/pkg_deltaplan_s.sql
 /
 @@../../oracle/pkg_deltaplan_b.sql

@@ -4,12 +4,12 @@
 -- an UPDATE and an INSERT, or INSERT ... ON CONFLICT where the server has it.
 --
 -- The calculating session calls deltaplan.initialize, which creates the
--- temporary tables deltaplan_keys and deltaplan_batch. Their names match the
+-- temporary tables deltaplan_keys_tmp and deltaplan_batch_tmp. Their names match the
 -- Oracle installation, so the target statement can read them unqualified.
 -- deltaplan_watermark is permanent and holds the watermark.
--- Column order matches the Oracle tables. See oracle/deltaplan_keys.sql.
+-- Column order matches the Oracle tables. See oracle/deltaplan_keys_tmp.sql.
 --
--- PostgreSQL keeps session flags in deltaplan_session, also temporary.
+-- PostgreSQL keeps session flags in deltaplan_session_tmp, also temporary.
 -- A commit inside prepare_batches or finish_batch persists those flags;
 -- a later rollback undoes only the open batch. Call initialize again if
 -- that first transaction is rolled back before anything has been committed:
@@ -66,7 +66,7 @@ declare
     l_by_pk  text := '';
 begin
     -- PostgreSQL rejects DISTRIBUTED BY. Greenplum needs it: the primary key
-    -- of deltaplan_session has to contain the distribution key, and the key
+    -- of deltaplan_session_tmp has to contain the distribution key, and the key
     -- tables are distributed by pk_1, the column the calculation joins.
     if position('greenplum' in lower(version())) > 0 then
         l_by_id := ' distributed by (id)';
@@ -74,7 +74,7 @@ begin
     end if;
 
     execute format($sql$
-        create temp table if not exists deltaplan_session (
+        create temp table if not exists deltaplan_session_tmp (
             id              int primary key,
             target_table    text,
             data_segment    text,
@@ -85,12 +85,12 @@ begin
             batches_ready   boolean,
             keys_durable    boolean,
             apply_open      boolean,
-            constraint ck_deltaplan_session_id check (id = 1)
+            constraint ck_deltaplan_session_tmp_id check (id = 1)
         ) on commit preserve rows%s
     $sql$, l_by_id);
 
     execute format($sql$
-        create temp table if not exists deltaplan_keys (
+        create temp table if not exists deltaplan_keys_tmp (
             target_table    text        not null,
             data_segment    text        not null,
             source_table    text        not null,
@@ -100,20 +100,20 @@ begin
             watermark       timestamp   not null,
             batch_no        numeric,
             batch_done      smallint    not null default 0,
-            constraint ck_deltaplan_keys_batch_done check (batch_done in (0, 1))
+            constraint ck_deltaplan_keys_tmp_done check (batch_done in (0, 1))
         ) on commit preserve rows%s
     $sql$, l_by_pk);
 
     execute format($sql$
-        create temp table if not exists deltaplan_batch (
+        create temp table if not exists deltaplan_batch_tmp (
             pk_1            text        not null,
             pk_2            text,
             pk_3            text
         ) on commit delete rows%s
     $sql$, l_by_pk);
 
-    create index if not exists idx_deltaplan_keys_batch
-        on deltaplan_keys (target_table, data_segment, batch_no, batch_done);
+    create index if not exists idx_deltaplan_keys_tmp_batch
+        on deltaplan_keys_tmp (target_table, data_segment, batch_no, batch_done);
 end;
 $$;
 
@@ -122,10 +122,10 @@ returns text
 language plpgsql stable
 set search_path = pg_temp, public as $$
 begin
-    if to_regclass('deltaplan_session') is null then
+    if to_regclass('deltaplan_session_tmp') is null then
         return null;
     end if;
-    return (select target_table from deltaplan_session where id = 1);
+    return (select target_table from deltaplan_session_tmp where id = 1);
 end;
 $$;
 
@@ -134,10 +134,10 @@ returns text
 language plpgsql stable
 set search_path = pg_temp, public as $$
 begin
-    if to_regclass('deltaplan_session') is null then
+    if to_regclass('deltaplan_session_tmp') is null then
         return null;
     end if;
-    return (select data_segment from deltaplan_session where id = 1);
+    return (select data_segment from deltaplan_session_tmp where id = 1);
 end;
 $$;
 
@@ -146,10 +146,10 @@ returns numeric
 language plpgsql stable
 set search_path = pg_temp, public as $$
 begin
-    if to_regclass('deltaplan_session') is null then
+    if to_regclass('deltaplan_session_tmp') is null then
         return null;
     end if;
-    return (select lookback_hours from deltaplan_session where id = 1);
+    return (select lookback_hours from deltaplan_session_tmp where id = 1);
 end;
 $$;
 
@@ -159,10 +159,10 @@ returns numeric
 language plpgsql stable
 set search_path = pg_temp, public as $$
 begin
-    if to_regclass('deltaplan_session') is null then
+    if to_regclass('deltaplan_session_tmp') is null then
         return null;
     end if;
-    return (select batch_no from deltaplan_session where id = 1);
+    return (select batch_no from deltaplan_session_tmp where id = 1);
 end;
 $$;
 
@@ -176,7 +176,7 @@ declare
 begin
     select count(distinct batch_no)::integer
     into l_left
-    from deltaplan_keys
+    from deltaplan_keys_tmp
     where target_table = deltaplan.get_target_table()
       and data_segment = deltaplan.get_data_segment()
       and batch_no is not null
@@ -194,7 +194,7 @@ declare
 begin
     select count(*)::integer
     into l_cnt
-    from deltaplan_keys
+    from deltaplan_keys_tmp
     where target_table = deltaplan.get_target_table()
       and data_segment = deltaplan.get_data_segment()
       and batch_no is null;
@@ -211,7 +211,7 @@ declare
 begin
     select count(distinct batch_no)::integer
     into l_cnt
-    from deltaplan_keys
+    from deltaplan_keys_tmp
     where target_table = deltaplan.get_target_table()
       and data_segment = deltaplan.get_data_segment()
       and batch_no is not null;
@@ -244,7 +244,7 @@ begin
 
     call deltaplan._ensure_temp();
 
-    insert into deltaplan_session (
+    insert into deltaplan_session_tmp (
         id, target_table, data_segment, lookback_hours,
         batch_no, batch_size, batch_commit, batches_ready, keys_durable, apply_open
     ) values (
@@ -262,12 +262,12 @@ begin
         keys_durable = false,
         apply_open = false;
 
-    delete from deltaplan_keys
+    delete from deltaplan_keys_tmp
     where target_table = l_target
       and data_segment = l_segment;
     get diagnostics l_rows = row_count;
 
-    delete from deltaplan_batch;
+    delete from deltaplan_batch_tmp;
 
     raise notice 'deltaplan.initialize: % | target=% segment=% lookback_hours=%',
         l_rows, l_target, l_segment, l_lookback;
@@ -297,13 +297,13 @@ declare
     l_sql      text;
     l_rows     bigint;
 begin
-    if to_regclass('deltaplan_session') is null then
+    if to_regclass('deltaplan_session_tmp') is null then
         raise exception 'DP-20001 Call initialize first';
     end if;
 
     select target_table, data_segment, lookback_hours, batches_ready, apply_open
     into l_target, l_segment, l_lookback, l_ready, l_open
-    from deltaplan_session
+    from deltaplan_session_tmp
     where id = 1;
 
     if l_target is null then
@@ -348,7 +348,7 @@ begin
     l_sql := regexp_replace(p_sql, ':since\M', '$1', 'gi');
 
     execute
-        'insert into deltaplan_keys (
+        'insert into deltaplan_keys_tmp (
             target_table, data_segment, source_table,
             pk_1, pk_2, pk_3, watermark
         )
@@ -362,8 +362,8 @@ begin
 end;
 $$;
 
--- Batches are optional. Without them the target statement reads deltaplan_keys.
--- With them: prepare_batches, then next_batch / SQL on deltaplan_batch / finish_batch.
+-- Batches are optional. Without them the target statement reads deltaplan_keys_tmp.
+-- With them: prepare_batches, then next_batch / SQL on deltaplan_batch_tmp / finish_batch.
 -- p_commit true commits the captured keys first, then each finish_batch.
 create or replace procedure deltaplan.prepare_batches(
     p_batch_size  numeric default 5000,
@@ -385,7 +385,7 @@ begin
     set search_path = pg_temp, public;
     select target_table, data_segment, batch_size, batch_commit, batch_no
     into l_target, l_segment, l_size, l_commit, l_batch_no
-    from deltaplan_session
+    from deltaplan_session_tmp
     where id = 1;
 
     if l_target is null then
@@ -397,7 +397,7 @@ begin
 
     select exists (
         select 1
-        from deltaplan_keys
+        from deltaplan_keys_tmp
         where target_table = l_target
           and data_segment = l_segment
           and batch_no is not null
@@ -411,7 +411,7 @@ begin
     end if;
 
     if l_batch_no is not null then
-        select exists (select 1 from deltaplan_batch) into l_open_rows;
+        select exists (select 1 from deltaplan_batch_tmp) into l_open_rows;
         if l_open_rows then
             raise exception 'DP-20014 batch % is open; call finish_batch', l_batch_no;
         end if;
@@ -421,12 +421,12 @@ begin
     into l_keys
     from (
         select distinct pk_1, pk_2, pk_3
-        from deltaplan_keys
+        from deltaplan_keys_tmp
         where target_table = l_target
           and data_segment = l_segment
     ) k;
 
-    update deltaplan_session
+    update deltaplan_session_tmp
     set batch_commit = p_commit,
         batches_ready = true,
         batch_no = null,
@@ -440,7 +440,7 @@ begin
     end if;
 
     if p_commit then
-        update deltaplan_session
+        update deltaplan_session_tmp
         set keys_durable = true
         where id = 1;
         commit;
@@ -448,7 +448,7 @@ begin
     end if;
 
     if not l_assigned then
-        update deltaplan_keys t
+        update deltaplan_keys_tmp t
         set batch_no = s.batch_no,
             batch_done = 0
         from (
@@ -458,7 +458,7 @@ begin
                    )::numeric / p_batch_size) as batch_no
             from (
                 select distinct pk_1, pk_2, pk_3
-                from deltaplan_keys
+                from deltaplan_keys_tmp
                 where target_table = l_target
                   and data_segment = l_segment
             ) d
@@ -486,7 +486,7 @@ begin
     end if;
 
     if deltaplan._unfinished() = 0 then
-        update deltaplan_session set apply_open = false where id = 1;
+        update deltaplan_session_tmp set apply_open = false where id = 1;
         raise notice 'deltaplan.prepare_batches: 0 | nothing left to apply';
         if p_commit then
             commit;
@@ -494,16 +494,16 @@ begin
         return;
     end if;
 
-    update deltaplan_session set apply_open = true where id = 1;
+    update deltaplan_session_tmp set apply_open = true where id = 1;
     if p_commit then
         commit;
     end if;
 end;
 $$;
 
--- Returns true when a batch is open and its keys are in deltaplan_batch.
+-- Returns true when a batch is open and its keys are in deltaplan_batch_tmp.
 -- Returns false when no unfinished batch remains.
--- After rollback both this flag and deltaplan_batch return to the last commit,
+-- After rollback both this flag and deltaplan_batch_tmp return to the last commit,
 -- and the next call loads the unfinished batch again.
 create or replace function deltaplan.next_batch()
 returns boolean
@@ -520,7 +520,7 @@ declare
 begin
     select target_table, data_segment, batches_ready, apply_open, batch_no
     into l_target, l_segment, l_ready, l_open, l_batch_no
-    from deltaplan_session
+    from deltaplan_session_tmp
     where id = 1;
 
     if l_target is null then
@@ -530,7 +530,7 @@ begin
         raise exception 'DP-20016 Call prepare_batches first';
     end if;
 
-    if l_batch_no is not null and exists (select 1 from deltaplan_batch) then
+    if l_batch_no is not null and exists (select 1 from deltaplan_batch_tmp) then
         raise exception 'DP-20014 batch % is open; call finish_batch', l_batch_no;
     end if;
 
@@ -539,10 +539,10 @@ begin
     end if;
 
     if l_batch_no is not null then
-        delete from deltaplan_batch;
-        insert into deltaplan_batch (pk_1, pk_2, pk_3)
+        delete from deltaplan_batch_tmp;
+        insert into deltaplan_batch_tmp (pk_1, pk_2, pk_3)
         select distinct pk_1, pk_2, pk_3
-        from deltaplan_keys
+        from deltaplan_keys_tmp
         where target_table = l_target
           and data_segment = l_segment
           and batch_no = l_batch_no
@@ -555,12 +555,12 @@ begin
             return true;
         end if;
 
-        update deltaplan_session set batch_no = null where id = 1;
+        update deltaplan_session_tmp set batch_no = null where id = 1;
     end if;
 
     select min(batch_no)
     into l_next
-    from deltaplan_keys
+    from deltaplan_keys_tmp
     where target_table = l_target
       and data_segment = l_segment
       and batch_no is not null
@@ -571,19 +571,19 @@ begin
             raise exception 'DP-20011 batch numbers are missing; call prepare_batches';
         end if;
 
-        update deltaplan_session
+        update deltaplan_session_tmp
         set batch_no = null,
             apply_open = false
         where id = 1;
-        delete from deltaplan_batch;
+        delete from deltaplan_batch_tmp;
         raise notice 'deltaplan.next_batch: 0 | nothing left to apply';
         return false;
     end if;
 
-    delete from deltaplan_batch;
-    insert into deltaplan_batch (pk_1, pk_2, pk_3)
+    delete from deltaplan_batch_tmp;
+    insert into deltaplan_batch_tmp (pk_1, pk_2, pk_3)
     select distinct pk_1, pk_2, pk_3
-    from deltaplan_keys
+    from deltaplan_keys_tmp
     where target_table = l_target
       and data_segment = l_segment
       and batch_no = l_next
@@ -594,7 +594,7 @@ begin
         raise exception 'DP-20011 batch % has no keys', l_next;
     end if;
 
-    update deltaplan_session set batch_no = l_next where id = 1;
+    update deltaplan_session_tmp set batch_no = l_next where id = 1;
     raise notice 'deltaplan.next_batch: % | batch %/% opened',
         l_keys, l_next, deltaplan._batch_total();
     return true;
@@ -618,7 +618,7 @@ begin
     set search_path = pg_temp, public;
     select target_table, data_segment, batch_no, batch_commit
     into l_target, l_segment, l_batch_no, l_commit
-    from deltaplan_session
+    from deltaplan_session_tmp
     where id = 1;
 
     if l_target is null then
@@ -628,7 +628,7 @@ begin
         raise exception 'DP-20017 No open batch; call next_batch';
     end if;
 
-    update deltaplan_keys
+    update deltaplan_keys_tmp
     set batch_done = 1
     where target_table = l_target
       and data_segment = l_segment
@@ -643,11 +643,11 @@ begin
     if l_commit then
         commit;
     else
-        delete from deltaplan_batch;
+        delete from deltaplan_batch_tmp;
     end if;
 
     l_left := deltaplan._unfinished();
-    update deltaplan_session
+    update deltaplan_session_tmp
     set batch_no = null,
         apply_open = l_left > 0
     where id = 1;
@@ -680,13 +680,13 @@ declare
     l_old        timestamp;
     l_effective  timestamp;
 begin
-    if to_regclass('deltaplan_session') is null then
+    if to_regclass('deltaplan_session_tmp') is null then
         raise exception 'DP-20001 Call initialize first';
     end if;
 
     select target_table, data_segment, batches_ready, apply_open
     into l_target, l_segment, l_ready, l_open
-    from deltaplan_session
+    from deltaplan_session_tmp
     where id = 1;
 
     if l_target is null then
@@ -700,7 +700,7 @@ begin
     into l_all_pk
     from (
         select distinct pk_1, pk_2, pk_3
-        from deltaplan_keys
+        from deltaplan_keys_tmp
         where target_table = l_target
           and data_segment = l_segment
     ) k;
@@ -717,7 +717,7 @@ begin
         select s.source_table, s.watermark
         from (
             select source_table, max(watermark) as watermark
-            from deltaplan_keys
+            from deltaplan_keys_tmp
             where target_table = l_target
               and data_segment = l_segment
             group by source_table
@@ -753,8 +753,8 @@ begin
         raise notice 'deltaplan.finalize: no delta, watermarks unchanged';
     end if;
 
-    delete from deltaplan_batch;
-    update deltaplan_session
+    delete from deltaplan_batch_tmp;
+    update deltaplan_session_tmp
     set target_table = null,
         data_segment = null,
         lookback_hours = 0,
