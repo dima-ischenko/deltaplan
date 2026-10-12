@@ -1,11 +1,13 @@
-# deltaplan
+# Deltaplan (DPL)
 
-Deltaplan is a small library for incremental loads of a target table on Oracle and PostgreSQL. It keeps a watermark for each source, captures the primary keys that have moved since that watermark, and leaves the refresh statement to you. You recalculate only those keys. Deltaplan never moves a watermark backwards.
+dpl is a small library for incremental loads of a target table on Oracle and PostgreSQL. It keeps a watermark for each source, captures the primary keys that have moved since that watermark, and leaves the refresh statement to you. You recalculate only those keys. dpl never moves a watermark backwards.
 
 The refresh statement is ordinary SQL. Batches are optional: a small target table can be refreshed in one statement; a large one can be split into committed slices.
 
-- Oracle: [deploy](oracle/deploy.md), [run](oracle/README.md)
-- PostgreSQL and Greenplum: [deploy](postgres/deploy.md), [run](postgres/README.md)
+- Oracle: [deploy](lib/oracle/deploy.md), [run](lib/oracle/README.md)
+- PostgreSQL and Greenplum: [deploy](lib/postgres/deploy.md), [run](lib/postgres/README.md)
+
+Library code is in `lib/oracle` and `lib/postgres`. Examples sit next to each engine. Tests stay in `tests/`.
 
 ## How a run works
 
@@ -53,7 +55,7 @@ Session tables take the suffix `_tmp`, the usual warehouse marker for a temporar
 
 The loop is then `next_batch`, the refresh statement against `dpl_batch_tmp`, and `finish_batch`. Call `finish_batch` immediately after that statement. `next_batch` returns false when no unfinished batch remains. Call `finalize` after the loop. It raises an error while a batch is unfinished, and that error does not roll the session back.
 
-Commit behaviour differs by engine: [Oracle](oracle/README.md), [PostgreSQL](postgres/README.md).
+Commit behaviour differs by engine: [Oracle](lib/oracle/README.md), [PostgreSQL](lib/postgres/README.md).
 
 ## Data segments
 
@@ -61,18 +63,18 @@ A watermark is stored for the triple `(target_table, data_segment, source_table)
 
 Use a named segment when the same target must be loaded in independent slices. Typical cases are a country, a legal entity, or a book of business. Each slice then has its own watermark, so a late load for France does not hold back Germany, and a rerun of one slice does not recapture keys of another.
 
-Deltaplan does not read `data_segment` out of the source tables. You pass the slice into `initialize`, and you apply the same predicate in the capture SQL and in the refresh statement. `get_data_segment` returns the value of the current run, so the statements stay aligned.
+dpl does not read `data_segment` out of the source tables. You pass the slice into `initialize`, and you apply the same predicate in the capture SQL and in the refresh statement. `get_data_segment` returns the value of the current run, so the statements stay aligned.
 
 ```sql
-pkg_deltaplan.initialize('customer_metrics', 'fr', 2);
+pkg_dpl.initialize('customer_metrics', 'fr', 2);
 
-pkg_deltaplan.capture_delta('orders', q'[
+pkg_dpl.capture_delta('orders', q'[
     select customer_id as pk_1,
            null        as pk_2,
            null        as pk_3,
            max(updated_at) as watermark
     from orders
-    where country_code = pkg_deltaplan.get_data_segment
+    where country_code = pkg_dpl.get_data_segment
       and updated_at > :since
     group by customer_id
 ]');
@@ -81,8 +83,8 @@ pkg_deltaplan.capture_delta('orders', q'[
 Without batches, the refresh statement still reads `dpl_keys_tmp` restricted to that segment:
 
 ```sql
-where k.target_table = pkg_deltaplan.get_target_table
-  and k.data_segment = pkg_deltaplan.get_data_segment
+where k.target_table = pkg_dpl.get_target_table
+  and k.data_segment = pkg_dpl.get_data_segment
 ```
 
 `dpl_batch_tmp` does not store the segment: it contains only the keys of the open batch, which already belong to the current run. A second session may call `initialize` for another segment of the same target; the watermarks remain separate.
@@ -99,13 +101,13 @@ If a removal must reach the target table, keep a row in the source: a deleted fl
 
 ## Tests
 
-Both suites copy the scripts into a database container. The host does not need `sqlplus` or `psql`. They cover a static load, the lookback window, batches, a resume after rollback, and the errors that keep a watermark in place. The passing lines are `pkg_deltaplan_test: passed` and `deltaplan_test: passed`.
+Both suites copy the scripts into a database container. The host does not need `sqlplus` or `psql`. They cover a static load, the lookback window, batches, a resume after rollback, and the errors that keep a watermark in place. The passing lines are `pkg_dpl_test: passed` and `dpl_test: passed`.
 
 ```bash
 docker compose -f tests/docker/docker-compose.yml up --wait
-ORACLE_CONTAINER=deltaplan-oracle \
+ORACLE_CONTAINER=dpl-oracle \
 ORACLE_CONNECT=test/test_pass@//localhost:1521/FREEPDB1 \
-PG_CONTAINER=deltaplan-postgres \
+PG_CONTAINER=dpl-postgres \
 make test
 ```
 

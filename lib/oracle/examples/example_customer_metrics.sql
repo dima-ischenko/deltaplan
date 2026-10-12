@@ -1,19 +1,19 @@
 -- A short run: a lookback of two hours, and a target merge in batches of two keys.
 -- The merge is ordinary SQL against dpl_batch_tmp.
 -- Without batches the same merge reads dpl_keys_tmp and the loop is omitted:
---   where target_table = pkg_deltaplan.get_target_table
---     and data_segment = pkg_deltaplan.get_data_segment
+--   where target_table = pkg_dpl.get_target_table
+--     and data_segment = pkg_dpl.get_data_segment
 -- then call finalize at once.
 -- set serveroutput on size unlimited
 
 begin
-    pkg_deltaplan.initialize(
+    pkg_dpl.initialize(
         p_target_table   => 'customer_metrics',
         p_data_segment   => 'all',
         p_lookback_hours => 2
     );
 
-    pkg_deltaplan.capture_delta(
+    pkg_dpl.capture_delta(
         p_source_table => 'customers',
         p_sql => q'[
             with changed_customers as (
@@ -29,7 +29,7 @@ begin
         ]'
     );
 
-    pkg_deltaplan.capture_delta(
+    pkg_dpl.capture_delta(
         p_source_table => 'orders',
         p_sql => q'[
             with changed_orders as (
@@ -46,7 +46,7 @@ begin
         ]'
     );
 
-    pkg_deltaplan.capture_delta(
+    pkg_dpl.capture_delta(
         p_source_table => 'order_items',
         p_sql => q'[
             with changed_items as (
@@ -64,9 +64,9 @@ begin
         ]'
     );
 
-    pkg_deltaplan.prepare_batches(p_batch_size => 2);
+    pkg_dpl.prepare_batches(p_batch_size => 2);
 
-    while pkg_deltaplan.next_batch loop
+    while pkg_dpl.next_batch loop
         merge into customer_metrics t
             using (
                 with changed_customers as (
@@ -107,10 +107,10 @@ begin
                 s.last_order_id, s.cnt_completed, sysdate
             );
 
-        pkg_deltaplan.finish_batch;
+        pkg_dpl.finish_batch;
     end loop;
 
-    pkg_deltaplan.finalize;
+    pkg_dpl.finalize;
     commit;
 end;
 /

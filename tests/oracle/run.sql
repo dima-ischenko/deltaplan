@@ -1,4 +1,4 @@
--- Rebuild deltaplan in the current schema and run the checks.
+-- Rebuild dpl in the current schema and run the checks.
 -- sqlplus user/password@//host:1521/service @tests/oracle/run.sql
 
 whenever sqlerror exit sql.sqlcode
@@ -7,16 +7,16 @@ set define off
 set feedback off
 set verify off
 
-begin execute immediate 'drop package pkg_deltaplan_test'; exception when others then if sqlcode != -4043 then raise; end if; end;
+begin execute immediate 'drop package pkg_dpl_test'; exception when others then if sqlcode != -4043 then raise; end if; end;
 /
-@@../../oracle/rollback_code.sql
-@@../../oracle/rollback_structure.sql
-@@../../oracle/ddl_dml/dpl_watermark.sql
-@@../../oracle/ddl_dml/dpl_keys_tmp.sql
-@@../../oracle/ddl_dml/dpl_batch_tmp.sql
-@@../../oracle/packages/pkg_deltaplan_s.sql
+@@../../lib/oracle/rollback_code.sql
+@@../../lib/oracle/rollback_structure.sql
+@@../../lib/oracle/ddl_dml/dpl_watermark.sql
+@@../../lib/oracle/ddl_dml/dpl_keys_tmp.sql
+@@../../lib/oracle/ddl_dml/dpl_batch_tmp.sql
+@@../../lib/oracle/packages/pkg_dpl_s.sql
 /
-@@../../oracle/packages/pkg_deltaplan_b.sql
+@@../../lib/oracle/packages/pkg_dpl_b.sql
 /
 
 -- The test package names these tables in static SQL, so they must exist at compile time.
@@ -60,7 +60,7 @@ create table inc_test_seen (
     id       varchar2(10) not null
 );
 
-@@pkg_deltaplan_test.sql
+@@pkg_dpl_test.sql
 
 declare
     l_errors number;
@@ -68,13 +68,13 @@ begin
     select count(*)
     into l_errors
     from user_errors
-    where name in ('PKG_DELTAPLAN', 'PKG_DELTAPLAN_TEST');
+    where name in ('PKG_DPL', 'PKG_DPL_TEST');
 
     if l_errors > 0 then
-        raise_application_error(-20000, 'deltaplan did not compile, errors=' || l_errors);
+        raise_application_error(-20000, 'dpl did not compile, errors=' || l_errors);
     end if;
 end;
 /
 
-exec pkg_deltaplan_test.run
+exec pkg_dpl_test.run
 exit

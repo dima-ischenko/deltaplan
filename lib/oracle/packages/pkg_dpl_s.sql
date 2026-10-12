@@ -1,4 +1,4 @@
-create or replace package pkg_deltaplan is
+create or replace package pkg_dpl is
 
     -- p_lookback_hours moves the read bound back by N hours; fractions are allowed.
     -- The source SQL keeps a strict predicate: value > :since.
@@ -62,4 +62,4 @@ create or replace package pkg_deltaplan is
     -- Refuses while a batch is still unfinished, and does not roll that error back.
     procedure finalize;
 
-end pkg_deltaplan;
+end pkg_dpl;

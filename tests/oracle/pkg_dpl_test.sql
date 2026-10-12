@@ -1,17 +1,17 @@
--- Checks for pkg_deltaplan.
+-- Checks for pkg_dpl.
 -- Requires dpl_watermark, dpl_keys_tmp, dpl_batch_tmp and the package itself.
 -- set serveroutput on size unlimited
--- @pkg_deltaplan_test.sql
--- exec pkg_deltaplan_test.run
+-- @pkg_dpl_test.sql
+-- exec pkg_dpl_test.run
 
-create or replace package pkg_deltaplan_test is
+create or replace package pkg_dpl_test is
 
     procedure run;
 
-end pkg_deltaplan_test;
+end pkg_dpl_test;
 /
 
-create or replace package body pkg_deltaplan_test is
+create or replace package body pkg_dpl_test is
 
     c_target constant varchar2(128) := 'inc_test_tgt';
     c_t1     constant date := timestamp '2024-01-15 10:00:00';
@@ -65,7 +65,7 @@ create or replace package body pkg_deltaplan_test is
         delete from inc_test_expect;
         delete from inc_test_seen;
 
-        pkg_deltaplan.initialize(c_target, 'all', 0);
+        pkg_dpl.initialize(c_target, 'all', 0);
         commit;
     end reset;
 
@@ -83,7 +83,7 @@ create or replace package body pkg_deltaplan_test is
 
     procedure capture_source(p_table varchar2) is
     begin
-        pkg_deltaplan.capture_delta(
+        pkg_dpl.capture_delta(
             p_source_table => p_table,
             p_sql =>
                 'select id as pk_1,'
@@ -110,8 +110,8 @@ create or replace package body pkg_deltaplan_test is
             from dpl_keys_tmp k
             left join inc_test_a a on a.id = k.pk_1
             left join inc_test_b b on b.id = k.pk_1
-            where k.target_table = pkg_deltaplan.get_target_table
-              and k.data_segment = pkg_deltaplan.get_data_segment
+            where k.target_table = pkg_dpl.get_target_table
+              and k.data_segment = pkg_dpl.get_data_segment
             group by k.pk_1
         ) s
         on (t.id = s.id)
@@ -238,21 +238,21 @@ create or replace package body pkg_deltaplan_test is
         );
 
         eq('static keys', key_count, '3');
-        eq('static batch no', to_char(pkg_deltaplan.get_batch_no), to_char(null));
+        eq('static batch no', to_char(pkg_dpl.get_batch_no), to_char(null));
         merge_all;
         eq('static tgt', tgt_state, '1:10:1,2:25:1,3:7:1');
 
-        pkg_deltaplan.finalize;
+        pkg_dpl.finalize;
         eq('static wm a', wm('inc_test_a'), '2024-01-15 10:00:00');
         eq('static wm b', wm('inc_test_b'), '2024-01-15 10:00:00');
         eq('static other tracking', tracking_count('other_tgt'), '0');
-        eq('static closed', pkg_deltaplan.get_target_table, to_char(null));
+        eq('static closed', pkg_dpl.get_target_table, to_char(null));
 
-        pkg_deltaplan.initialize(c_target, 'all', 0);
+        pkg_dpl.initialize(c_target, 'all', 0);
         capture_both;
         eq('static second keys', key_count, '0');
         merge_all;
-        pkg_deltaplan.finalize;
+        pkg_dpl.finalize;
         eq('static second wm a', wm('inc_test_a'), '2024-01-15 10:00:00');
         eq('static second tgt', tgt_state, '1:10:1,2:25:1,3:7:1');
 
@@ -261,11 +261,11 @@ create or replace package body pkg_deltaplan_test is
             updated_at = c_t2
         where id = '2';
 
-        pkg_deltaplan.initialize(c_target, 'all', 0);
+        pkg_dpl.initialize(c_target, 'all', 0);
         capture_both;
         eq('static delta keys', key_count, '1');
         merge_all;
-        pkg_deltaplan.finalize;
+        pkg_dpl.finalize;
         eq('static delta tgt', tgt_state, '1:10:1,2:55:2,3:7:1');
         eq('static delta wm a', wm('inc_test_a'), '2024-02-01 00:00:00');
         eq('static delta wm b', wm('inc_test_b'), '2024-01-15 10:00:00');
@@ -289,12 +289,12 @@ create or replace package body pkg_deltaplan_test is
         add_row('inc_test_a', 'b', 1, timestamp '2024-06-01 11:00:00');
         add_row('inc_test_a', 'c', 1, timestamp '2024-06-01 13:00:00');
 
-        pkg_deltaplan.initialize(c_target, 'all', 2);
+        pkg_dpl.initialize(c_target, 'all', 2);
         capture_source('inc_test_a');
         eq('lookback keys', key_count, '2');
         merge_all;
         eq('lookback tgt', tgt_state, 'b:1:1,c:1:1');
-        pkg_deltaplan.finalize;
+        pkg_dpl.finalize;
         eq('lookback wm', wm('inc_test_a'), '2024-06-01 13:00:00');
         pass('lookback_window');
     end test_lookback_window;
@@ -311,11 +311,11 @@ create or replace package body pkg_deltaplan_test is
         add_row('inc_test_a', 'e', 5, c_t1);
         capture_source('inc_test_a');
 
-        pkg_deltaplan.prepare_batches(p_batch_size => 2);
+        pkg_dpl.prepare_batches(p_batch_size => 2);
 
-        while pkg_deltaplan.next_batch loop
+        while pkg_dpl.next_batch loop
             l_step := l_step + 1;
-            l_no := pkg_deltaplan.get_batch_no;
+            l_no := pkg_dpl.get_batch_no;
 
             insert into inc_test_seen (batch_no, id)
             select l_no, pk_1
@@ -330,7 +330,7 @@ create or replace package body pkg_deltaplan_test is
                 eq('open wm', wm('inc_test_a'), to_char(null));
             end if;
 
-            pkg_deltaplan.finish_batch;
+            pkg_dpl.finish_batch;
         end loop;
 
         eq('batches', to_char(l_step), '3');
@@ -340,7 +340,7 @@ create or replace package body pkg_deltaplan_test is
         eq('batch tgt before finalize', tgt_state, 'a:1:1,b:2:1,c:3:1,d:4:1,e:5:1');
         eq('batch wm before finalize', wm('inc_test_a'), to_char(null));
 
-        pkg_deltaplan.finalize;
+        pkg_dpl.finalize;
         eq('batch wm', wm('inc_test_a'), '2024-01-15 10:00:00');
         pass('static_batches');
     end test_static_batches;
@@ -357,7 +357,7 @@ create or replace package body pkg_deltaplan_test is
         add_row('inc_test_b', 'c', 4, c_t1);
         capture_both;
         merge_all;
-        pkg_deltaplan.finalize;
+        pkg_dpl.finalize;
 
         l_wm_a := wm('inc_test_a');
         l_wm_b := wm('inc_test_b');
@@ -371,16 +371,16 @@ create or replace package body pkg_deltaplan_test is
         where target_table = c_target;
         commit;
 
-        pkg_deltaplan.initialize(c_target, 'all', 0);
+        pkg_dpl.initialize(c_target, 'all', 0);
         capture_both;
-        pkg_deltaplan.prepare_batches(p_batch_size => 1);
+        pkg_dpl.prepare_batches(p_batch_size => 1);
 
-        while pkg_deltaplan.next_batch loop
+        while pkg_dpl.next_batch loop
             merge_batch;
-            pkg_deltaplan.finish_batch;
+            pkg_dpl.finish_batch;
         end loop;
 
-        pkg_deltaplan.finalize;
+        pkg_dpl.finalize;
 
         select count(*)
         into l_diff
@@ -409,42 +409,42 @@ create or replace package body pkg_deltaplan_test is
         add_row('inc_test_a', 'b', 2, c_t1);
         add_row('inc_test_a', 'c', 3, c_t1);
         capture_source('inc_test_a');
-        pkg_deltaplan.prepare_batches(p_batch_size => 2);
+        pkg_dpl.prepare_batches(p_batch_size => 2);
 
-        if not pkg_deltaplan.next_batch then
+        if not pkg_dpl.next_batch then
             fail('resume', 'missing first batch');
         end if;
 
         merge_batch;
-        pkg_deltaplan.finish_batch;
+        pkg_dpl.finish_batch;
         eq('resume after first', tgt_state, 'a:1:1,b:2:1');
 
-        if not pkg_deltaplan.next_batch then
+        if not pkg_dpl.next_batch then
             fail('resume', 'missing second batch');
         end if;
 
-        l_no := pkg_deltaplan.get_batch_no;
+        l_no := pkg_dpl.get_batch_no;
         l_ids := ids_in_batch;
         merge_batch;
         rollback;
 
         eq('resume rolled back', tgt_state, 'a:1:1,b:2:1');
 
-        if not pkg_deltaplan.next_batch then
+        if not pkg_dpl.next_batch then
             fail('resume', 'batch was not reopened');
         end if;
 
-        eq('resume batch no', to_char(pkg_deltaplan.get_batch_no), to_char(l_no));
+        eq('resume batch no', to_char(pkg_dpl.get_batch_no), to_char(l_no));
         eq('resume keys', ids_in_batch, l_ids);
         merge_batch;
-        pkg_deltaplan.finish_batch;
+        pkg_dpl.finish_batch;
 
-        if pkg_deltaplan.next_batch then
+        if pkg_dpl.next_batch then
             fail('resume', 'unexpected extra batch');
         end if;
 
         eq('resume wm still old', wm('inc_test_a'), to_char(null));
-        pkg_deltaplan.finalize;
+        pkg_dpl.finalize;
         eq('resume tgt', tgt_state, 'a:1:1,b:2:1,c:3:1');
         eq('resume wm', wm('inc_test_a'), '2024-01-15 10:00:00');
         pass('resume_same_batch');
@@ -457,14 +457,14 @@ create or replace package body pkg_deltaplan_test is
         add_row('inc_test_a', 'b', 1, c_t1);
         add_row('inc_test_a', 'c', 1, c_t1);
         capture_source('inc_test_a');
-        pkg_deltaplan.prepare_batches(p_batch_size => 2);
+        pkg_dpl.prepare_batches(p_batch_size => 2);
 
-        if not pkg_deltaplan.next_batch then
+        if not pkg_dpl.next_batch then
             fail('guard finalize', 'missing batch');
         end if;
 
         begin
-            pkg_deltaplan.finalize;
+            pkg_dpl.finalize;
             expect_error('guard finalize', -20005);
         exception
             when others then
@@ -474,28 +474,28 @@ create or replace package body pkg_deltaplan_test is
         end;
 
         merge_batch;
-        pkg_deltaplan.finish_batch;
+        pkg_dpl.finish_batch;
 
-        while pkg_deltaplan.next_batch loop
+        while pkg_dpl.next_batch loop
             merge_batch;
-            pkg_deltaplan.finish_batch;
+            pkg_dpl.finish_batch;
         end loop;
 
-        pkg_deltaplan.finalize;
+        pkg_dpl.finalize;
         eq('guard tgt', tgt_state, 'a:1:1,b:1:1,c:1:1');
 
         reset;
         add_row('inc_test_a', 'a', 1, c_t1);
         add_row('inc_test_a', 'b', 1, c_t1);
         capture_source('inc_test_a');
-        pkg_deltaplan.prepare_batches(p_batch_size => 1);
+        pkg_dpl.prepare_batches(p_batch_size => 1);
 
-        if not pkg_deltaplan.next_batch then
+        if not pkg_dpl.next_batch then
             fail('guard next', 'missing batch');
         end if;
 
         begin
-            if pkg_deltaplan.next_batch then
+            if pkg_dpl.next_batch then
                 null;
             end if;
             expect_error('guard next', -20014);
@@ -507,22 +507,22 @@ create or replace package body pkg_deltaplan_test is
         end;
 
         merge_batch;
-        pkg_deltaplan.finish_batch;
+        pkg_dpl.finish_batch;
 
-        while pkg_deltaplan.next_batch loop
+        while pkg_dpl.next_batch loop
             merge_batch;
-            pkg_deltaplan.finish_batch;
+            pkg_dpl.finish_batch;
         end loop;
 
-        pkg_deltaplan.finalize;
+        pkg_dpl.finalize;
 
         reset;
         add_row('inc_test_a', 'a', 1, c_t1);
         capture_source('inc_test_a');
-        pkg_deltaplan.prepare_batches(p_batch_size => 2);
+        pkg_dpl.prepare_batches(p_batch_size => 2);
 
         begin
-            pkg_deltaplan.prepare_batches(p_batch_size => 3);
+            pkg_dpl.prepare_batches(p_batch_size => 3);
             expect_error('guard size', -20009);
         exception
             when others then
@@ -532,7 +532,7 @@ create or replace package body pkg_deltaplan_test is
         end;
 
         begin
-            pkg_deltaplan.prepare_batches(p_batch_size => 2, p_commit => false);
+            pkg_dpl.prepare_batches(p_batch_size => 2, p_commit => false);
             expect_error('guard commit', -20018);
         exception
             when others then
@@ -551,17 +551,17 @@ create or replace package body pkg_deltaplan_test is
                 end if;
         end;
 
-        while pkg_deltaplan.next_batch loop
+        while pkg_dpl.next_batch loop
             merge_batch;
-            pkg_deltaplan.finish_batch;
+            pkg_dpl.finish_batch;
         end loop;
 
-        pkg_deltaplan.finalize;
+        pkg_dpl.finalize;
 
         reset;
 
         begin
-            if pkg_deltaplan.next_batch then
+            if pkg_dpl.next_batch then
                 null;
             end if;
             expect_error('guard no prepare', -20016);
@@ -573,7 +573,7 @@ create or replace package body pkg_deltaplan_test is
         end;
 
         begin
-            pkg_deltaplan.finish_batch;
+            pkg_dpl.finish_batch;
             expect_error('guard no batch', -20017);
         exception
             when others then
@@ -595,9 +595,9 @@ create or replace package body pkg_deltaplan_test is
         add_row('inc_test_b', 'a', 1, c_t1);
         add_row('inc_test_b', 'b', 2, c_t1);
         capture_both;
-        pkg_deltaplan.prepare_batches(p_batch_size => 10);
+        pkg_dpl.prepare_batches(p_batch_size => 10);
 
-        if not pkg_deltaplan.next_batch then
+        if not pkg_dpl.next_batch then
             fail('one pk', 'missing batch');
         end if;
 
@@ -612,13 +612,13 @@ create or replace package body pkg_deltaplan_test is
         eq('one pk batch rows', to_char(l_rows), '2');
         eq('one pk temp rows', to_char(l_temp), '4');
         merge_batch;
-        pkg_deltaplan.finish_batch;
+        pkg_dpl.finish_batch;
 
-        if pkg_deltaplan.next_batch then
+        if pkg_dpl.next_batch then
             fail('one pk', 'second batch');
         end if;
 
-        pkg_deltaplan.finalize;
+        pkg_dpl.finalize;
         eq('one pk tgt', tgt_state, 'a:11:1,b:22:1');
         pass('one_pk_one_batch');
     end test_one_pk_one_batch;
@@ -629,16 +629,16 @@ create or replace package body pkg_deltaplan_test is
         add_row('inc_test_a', 'a', 1, c_t1);
         add_row('inc_test_a', 'b', 2, c_t1);
         capture_source('inc_test_a');
-        pkg_deltaplan.prepare_batches(p_batch_size => 1, p_commit => false);
+        pkg_dpl.prepare_batches(p_batch_size => 1, p_commit => false);
 
-        while pkg_deltaplan.next_batch loop
+        while pkg_dpl.next_batch loop
             merge_batch;
-            pkg_deltaplan.finish_batch;
+            pkg_dpl.finish_batch;
         end loop;
 
         rollback;
         eq('rollback tgt', tgt_state, to_char(null));
-        pkg_deltaplan.finalize;
+        pkg_dpl.finalize;
         eq('rollback wm', wm('inc_test_a'), to_char(null));
         pass('rollback_without_commit');
     end test_rollback_without_commit;
@@ -655,12 +655,12 @@ create or replace package body pkg_deltaplan_test is
         test_batch_guards;
         test_one_pk_one_batch;
         test_rollback_without_commit;
-        dbms_output.put_line('pkg_deltaplan_test: passed');
+        dbms_output.put_line('pkg_dpl_test: passed');
     exception
         when others then
             rollback;
             raise;
     end run;
 
-end pkg_deltaplan_test;
+end pkg_dpl_test;
 /

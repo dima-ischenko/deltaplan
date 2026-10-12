@@ -1,4 +1,4 @@
-create or replace package pkg_deltaplan_demo is
+create or replace package pkg_dpl_demo is
 
     -- 100,000 customers, 1,000,000 orders and 30 items each: 30,000,000 order_items.
     -- The base updated_at is 2024-01-15 10:00:00.
@@ -24,4 +24,4 @@ create or replace package pkg_deltaplan_demo is
 
     procedure report;
 
-end pkg_deltaplan_demo;
+end pkg_dpl_demo;

@@ -1,4 +1,4 @@
-create or replace package body pkg_deltaplan_demo is
+create or replace package body pkg_dpl_demo is
 
     c_target          constant varchar2(128) := 'customer_metrics';
     c_segment         constant varchar2(64) := 'all';
@@ -200,7 +200,7 @@ create or replace package body pkg_deltaplan_demo is
     end load_orders;
 
     procedure load_items(p_orders number, p_items_per_order number) is
-        l_proc_name varchar2(64) := 'pkg_deltaplan_demo.load_base';
+        l_proc_name varchar2(64) := 'pkg_dpl_demo.load_base';
         l_from      number := 1;
         l_chunk     number;
         l_rows      number;
@@ -323,7 +323,7 @@ create or replace package body pkg_deltaplan_demo is
         p_items_per_order number  default 30,
         p_mark_synced     boolean default true
     ) is
-        l_proc_name varchar2(64) := 'pkg_deltaplan_demo.load_base';
+        l_proc_name varchar2(64) := 'pkg_dpl_demo.load_base';
         l_started   timestamp := systimestamp;
         l_per_cust  number;
         l_items     number;
@@ -491,7 +491,7 @@ create or replace package body pkg_deltaplan_demo is
         p_update_share number default 0.5,
         p_as_of        date   default null
     ) is
-        l_proc_name   varchar2(64) := 'pkg_deltaplan_demo.plant_delta';
+        l_proc_name   varchar2(64) := 'pkg_dpl_demo.plant_delta';
         l_started     timestamp := systimestamp;
         l_base_cust   number;
         l_base_orders number;
@@ -743,7 +743,7 @@ create or replace package body pkg_deltaplan_demo is
     end plant_delta;
 
     procedure report is
-        l_proc_name varchar2(64) := 'pkg_deltaplan_demo.report';
+        l_proc_name varchar2(64) := 'pkg_dpl_demo.report';
         l_base_cust number;
         l_base_orders number;
         l_items_each number;
@@ -789,4 +789,4 @@ create or replace package body pkg_deltaplan_demo is
         );
     end report;
 
-end pkg_deltaplan_demo;
+end pkg_dpl_demo;

@@ -10,7 +10,7 @@ create table dpl_watermark (
 );
 
 comment on table dpl_watermark is
-    'High-water mark of a finished run. pkg_deltaplan.finalize advances it and never moves it backwards.';
+    'High-water mark of a finished run. pkg_dpl.finalize advances it and never moves it backwards.';
 comment on column dpl_watermark.watermark is
     'Greatest source value fully applied for this target, segment and source. The read bound is this value minus the lookback, and that bound is not stored.';
 comment on column dpl_watermark.updated_at is

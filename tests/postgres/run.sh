@@ -9,10 +9,10 @@ user="${PGUSER:-test_user}"
 password="${PGPASSWORD:-test_pass}"
 database="${PGDATABASE:-test_db}"
 
-docker exec "$container" mkdir -p /tmp/deltaplan/postgres /tmp/deltaplan/tests/postgres
-docker cp postgres/. "$container:/tmp/deltaplan/postgres"
-docker cp tests/postgres/deltaplan_test.sql "$container:/tmp/deltaplan/tests/postgres/deltaplan_test.sql"
-docker cp tests/postgres/run.sql "$container:/tmp/deltaplan/tests/postgres/run.sql"
+docker exec "$container" mkdir -p /tmp/dpl/lib/postgres /tmp/dpl/tests/postgres
+docker cp lib/postgres/. "$container:/tmp/dpl/lib/postgres"
+docker cp tests/postgres/dpl_test.sql "$container:/tmp/dpl/tests/postgres/dpl_test.sql"
+docker cp tests/postgres/run.sql "$container:/tmp/dpl/tests/postgres/run.sql"
 docker exec -e PGPASSWORD="$password" "$container" \
     psql -U "$user" -d "$database" -v ON_ERROR_STOP=1 \
-    -f /tmp/deltaplan/tests/postgres/run.sql
+    -f /tmp/dpl/tests/postgres/run.sql

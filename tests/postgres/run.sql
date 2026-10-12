@@ -3,11 +3,11 @@
 
 \set ON_ERROR_STOP on
 \set dpl_schema lib
-drop schema if exists deltaplan_test cascade;
+drop schema if exists dpl_test cascade;
 drop schema if exists lib cascade;
 create schema lib;
-\ir ../../postgres/rollback.sql
-\ir ../../postgres/deploy.sql
+\ir ../../lib/postgres/rollback.sql
+\ir ../../lib/postgres/deploy.sql
 set search_path to lib, public;
 
 drop table if exists public.inc_test_seen;
@@ -50,9 +50,9 @@ create table public.inc_test_seen (
     id       text not null
 );
 
-\ir deltaplan_test.sql
+\ir dpl_test.sql
 
 delete from dpl_watermark
 where target_table in ('inc_test_tgt', 'other_tgt');
 
-call deltaplan_test.run();
+call dpl_test.run();

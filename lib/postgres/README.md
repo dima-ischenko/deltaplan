@@ -2,11 +2,11 @@
 
 Deploy into a schema you choose, then put that schema on `search_path`. See [deploy](deploy.md).
 
-The steps are the same as in the [root README](../README.md): `initialize`, `capture_delta` for each source, the refresh statement, `finalize`. From SQL, call them with `select`. From PL/pgSQL, use `perform`. `next_batch` returns boolean, so a `WHILE` loop works inside a `DO` block.
+The steps are the same as in the [root README](../../README.md): `initialize`, `capture_delta` for each source, the refresh statement, `finalize`. From SQL, call them with `select`. From PL/pgSQL, use `perform`. `next_batch` returns boolean, so a `WHILE` loop works inside a `DO` block.
 
 ## A run without batches
 
-`MERGE` is available on PostgreSQL 15 and later. The statement reads `dpl_keys_tmp`, restricted to the current target and segment. Greenplum has no `MERGE`; use `UPDATE` then `INSERT`, as in `examples/postgres/example_customer_metrics.sql`.
+`MERGE` is available on PostgreSQL 15 and later. The statement reads `dpl_keys_tmp`, restricted to the current target and segment. Greenplum has no `MERGE`; use `UPDATE` then `INSERT`, as in `examples/example_customer_metrics.sql`.
 
 ```sql
 do $run$
@@ -197,7 +197,7 @@ end;
 $run$;
 ```
 
-A session with three sources is in `examples/postgres/example_customer_metrics.sql`. That file uses `UPDATE` followed by `INSERT`, which also runs on Greenplum 7.
+A session with three sources is in `examples/example_customer_metrics.sql`. That file uses `UPDATE` followed by `INSERT`, which also runs on Greenplum 7.
 
 ## Transactions
 

@@ -1,4 +1,4 @@
--- Deltaplan for PostgreSQL, and for Greenplum 7.
+-- dpl for PostgreSQL, and for Greenplum 7.
 -- The routines are functions. They do not commit: versions without
 -- procedures, and Greenplum releases that forbid a commit inside a
 -- function, can run this file. The caller commits.
@@ -11,7 +11,7 @@
 -- Their names match the Oracle installation, so the refresh statement can
 -- read them unqualified.
 -- dpl_watermark is permanent and holds the watermark.
--- Column order matches the Oracle tables. See oracle/ddl_dml/dpl_keys_tmp.sql.
+-- Column order matches the Oracle tables. See lib/oracle/ddl_dml/dpl_keys_tmp.sql.
 --
 -- PostgreSQL keeps session flags in dpl_session_tmp, also temporary.
 -- If the transaction that called initialize is rolled back, the temporary

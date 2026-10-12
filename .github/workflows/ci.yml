@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      PG_CONTAINER: deltaplan-postgres
+      PG_CONTAINER: dpl-postgres
       PGUSER: test_user
       PGPASSWORD: test_pass
       PGDATABASE: test_db
@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      ORACLE_CONTAINER: deltaplan-oracle
+      ORACLE_CONTAINER: dpl-oracle
       ORACLE_CONNECT: test/test_pass@//localhost:1521/FREEPDB1
     steps:
       - name: Check out repository

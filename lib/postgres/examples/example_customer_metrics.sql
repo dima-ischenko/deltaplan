@@ -1,4 +1,4 @@
--- The same shape as examples/oracle/example_customer_metrics.sql.
+-- The same shape as lib/oracle/examples/example_customer_metrics.sql.
 -- This file is an illustration. It expects customers, orders, order_items
 -- and customer_metrics to exist already, and it is not part of the test run.
 --

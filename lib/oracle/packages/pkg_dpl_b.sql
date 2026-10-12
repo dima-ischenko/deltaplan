@@ -1,4 +1,4 @@
-create or replace package body pkg_deltaplan is
+create or replace package body pkg_dpl is
 
     gv_target_table    varchar2(128);
     gv_data_segment    varchar2(64);
@@ -15,7 +15,7 @@ create or replace package body pkg_deltaplan is
 
     function get_proc_name(p_proc_name varchar2) return varchar2 is
     begin
-        return 'pkg_deltaplan.' || p_proc_name;
+        return 'pkg_dpl.' || p_proc_name;
     end get_proc_name;
 
     function fmt_date(p_date date) return varchar2 is
@@ -884,4 +884,4 @@ create or replace package body pkg_deltaplan is
             raise;
     end finalize;
 
-end pkg_deltaplan;
+end pkg_dpl;

@@ -4,11 +4,11 @@
 set -eu
 cd "$(dirname "$0")/../.."
 
-container="${ORACLE_CONTAINER:-deltaplan-oracle}"
+container="${ORACLE_CONTAINER:-dpl-oracle}"
 connect="${ORACLE_CONNECT:-test/test_pass@//localhost:1521/FREEPDB1}"
 
-docker exec "$container" mkdir -p /tmp/deltaplan/oracle /tmp/deltaplan/tests/oracle
-docker cp oracle/. "$container:/tmp/deltaplan/oracle"
-docker cp tests/oracle/. "$container:/tmp/deltaplan/tests/oracle"
-docker exec -w /tmp/deltaplan/tests/oracle "$container" \
+docker exec "$container" mkdir -p /tmp/dpl/lib/oracle /tmp/dpl/tests/oracle
+docker cp lib/oracle/. "$container:/tmp/dpl/lib/oracle"
+docker cp tests/oracle/. "$container:/tmp/dpl/tests/oracle"
+docker exec -w /tmp/dpl/tests/oracle "$container" \
     sqlplus -S "$connect" @run.sql

@@ -1,8 +1,8 @@
 # Oracle
 
-Call `pkg_deltaplan` after you [deploy](deploy.md) it into the calculating user's schema.
+Call `pkg_dpl` after you [deploy](deploy.md) it into the calculating user's schema.
 
-The steps are the same as in the [root README](../README.md): `initialize`, `capture_delta` for each source, the refresh statement, `finalize`.
+The steps are the same as in the [root README](../../README.md): `initialize`, `capture_delta` for each source, the refresh statement, `finalize`.
 
 ## A run without batches
 
@@ -12,9 +12,9 @@ The merge reads `dpl_keys_tmp`, restricted to the current target and segment:
 declare
     l_change_date date;
 begin
-    pkg_deltaplan.initialize('customer_metrics', 'all', 2);
+    pkg_dpl.initialize('customer_metrics', 'all', 2);
 
-    pkg_deltaplan.capture_delta('customers', q'[
+    pkg_dpl.capture_delta('customers', q'[
         with changed_customers as (
             select id, updated_at
             from customers
@@ -27,7 +27,7 @@ begin
         from changed_customers
     ]');
 
-    pkg_deltaplan.capture_delta('orders', q'[
+    pkg_dpl.capture_delta('orders', q'[
         with changed_orders as (
             select customer_id, updated_at
             from orders
@@ -41,7 +41,7 @@ begin
         group by customer_id
     ]');
 
-    pkg_deltaplan.capture_delta('order_items', q'[
+    pkg_dpl.capture_delta('order_items', q'[
         with changed_items as (
             select order_id, updated_at
             from order_items
@@ -63,8 +63,8 @@ begin
             with changed as (
                 select pk_1 as customer_id
                 from dpl_keys_tmp
-                where target_table = pkg_deltaplan.get_target_table
-                  and data_segment = pkg_deltaplan.get_data_segment
+                where target_table = pkg_dpl.get_target_table
+                  and data_segment = pkg_dpl.get_data_segment
                 group by pk_1
             )
             select c.id as customer_id,
@@ -93,7 +93,7 @@ begin
             s.cnt_completed, l_change_date
         );
 
-    pkg_deltaplan.finalize;
+    pkg_dpl.finalize;
 end;
 ```
 
@@ -105,9 +105,9 @@ The merge is the same, except that it reads `dpl_batch_tmp` and does not filter 
 declare
     l_change_date date;
 begin
-    pkg_deltaplan.initialize('customer_metrics', 'all', 2);
+    pkg_dpl.initialize('customer_metrics', 'all', 2);
 
-    pkg_deltaplan.capture_delta('customers', q'[
+    pkg_dpl.capture_delta('customers', q'[
         with changed_customers as (
             select id, updated_at
             from customers
@@ -120,7 +120,7 @@ begin
         from changed_customers
     ]');
 
-    pkg_deltaplan.capture_delta('orders', q'[
+    pkg_dpl.capture_delta('orders', q'[
         with changed_orders as (
             select customer_id, updated_at
             from orders
@@ -134,7 +134,7 @@ begin
         group by customer_id
     ]');
 
-    pkg_deltaplan.capture_delta('order_items', q'[
+    pkg_dpl.capture_delta('order_items', q'[
         with changed_items as (
             select order_id, updated_at
             from order_items
@@ -150,9 +150,9 @@ begin
     ]');
 
     l_change_date := sysdate;
-    pkg_deltaplan.prepare_batches(5000);
+    pkg_dpl.prepare_batches(5000);
 
-    while pkg_deltaplan.next_batch loop
+    while pkg_dpl.next_batch loop
         merge into customer_metrics t
             using (
                 with changed as (
@@ -186,14 +186,14 @@ begin
                 s.cnt_completed, l_change_date
             );
 
-        pkg_deltaplan.finish_batch;
+        pkg_dpl.finish_batch;
     end loop;
 
-    pkg_deltaplan.finalize;
+    pkg_dpl.finalize;
 end;
 ```
 
-A session with three sources is in `examples/oracle/example_customer_metrics.sql`. `examples/oracle/seed_volume.sql` loads a large source and is not part of the tests.
+A session with three sources is in `examples/example_customer_metrics.sql`. `examples/seed_volume.sql` loads a large source and is not part of the tests.
 
 ## Commits and resume
 

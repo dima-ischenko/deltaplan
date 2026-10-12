@@ -1,14 +1,14 @@
 # Deploy on Oracle
 
 ```bash
-cd oracle
+cd lib/oracle
 sqlplus user/password@//host:1521/service @deploy.sql
 ```
 
-`deploy.sql` runs `deploy_structure.sql` then `deploy_code.sql`. This creates `dpl_watermark`, the two global temporary tables, and `pkg_deltaplan`.
+`deploy.sql` runs `deploy_structure.sql` then `deploy_code.sql`. This creates `dpl_watermark`, the two global temporary tables, and `pkg_dpl`.
 
 ```bash
-cd oracle
+cd lib/oracle
 sqlplus user/password@//host:1521/service @rollback.sql
 ```
 
@@ -18,6 +18,6 @@ How to call the package after deploy: [README.md](README.md).
 
 ## Layout
 
-Tables live in `ddl_dml/`, the package in `packages/`, as in `rpd_data/lib` and `dwh_ato/lib`. SQL\*Plus resolves `@@` against the working directory, so run the scripts from `oracle/`.
+Tables live in `ddl_dml/`, the package in `packages/`, as in `rpd_data/lib` and `dwh_ato/lib`. Worked examples sit in `examples/`. SQL\*Plus resolves `@@` against the working directory, so run the scripts from `lib/oracle/`.
 
 The calculating user must own the objects: the key tables are global temporary tables, and the package keeps its state in the session.
