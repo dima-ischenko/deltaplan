@@ -22,7 +22,7 @@ begin
             from customers
             where updated_at > :since
         )
-        select id as pk_1,
+        select id::text as pk_1,
                null::text as pk_2,
                null::text as pk_3,
                updated_at as watermark
@@ -35,7 +35,7 @@ begin
             from orders
             where updated_at > :since
         )
-        select customer_id as pk_1,
+        select customer_id::text as pk_1,
                null::text as pk_2,
                null::text as pk_3,
                max(updated_at) as watermark
@@ -49,7 +49,7 @@ begin
             from order_items
             where updated_at > :since
         )
-        select o.customer_id as pk_1,
+        select o.customer_id::text as pk_1,
                null::text as pk_2,
                null::text as pk_3,
                max(ci.updated_at) as watermark
@@ -69,7 +69,7 @@ begin
             mt_change_date = clock_timestamp()
         from (
             with changed_customers as (
-                select pk_1 as customer_id
+                select pk_1::integer as customer_id
                 from dpl_batch_tmp
                 group by pk_1
             )
@@ -93,7 +93,7 @@ begin
                s.cnt_completed, clock_timestamp()
         from (
             with changed_customers as (
-                select pk_1 as customer_id
+                select pk_1::integer as customer_id
                 from dpl_batch_tmp
                 group by pk_1
             )
