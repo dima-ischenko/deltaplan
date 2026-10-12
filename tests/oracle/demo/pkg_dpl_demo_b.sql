@@ -105,7 +105,7 @@ create or replace package body pkg_dpl_demo is
                 avg_amount     number(10,2),
                 last_order_id  number,
                 cnt_completed  number,
-                updated_at date,
+                mt_change_date date,
                 constraint pk_customer_metrics primary key (customer_id)
             )';
 

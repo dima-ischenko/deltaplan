@@ -1,4 +1,5 @@
 -- A short run: a lookback of two hours, and a target merge in batches of two keys.
+-- The suite seeds customers, orders, order_items and customer_metrics first.
 -- The merge is ordinary SQL against dpl_batch_tmp.
 -- Without batches the same merge reads dpl_keys_tmp and the loop is omitted:
 --   where target_table = pkg_dpl.get_target_table

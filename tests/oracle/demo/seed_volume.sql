@@ -2,7 +2,7 @@
 -- Then a delta of 7 per cent of the base: half of it updates existing keys, half inserts new rows.
 -- The base watermark is written to dpl_watermark, so the tracker loads only the delta.
 --
--- Deploy first: lib/oracle/deploy.sql.
+-- Deploy first: lib/oracle/deploy.sql, then the demo package in this folder.
 -- set serveroutput on size unlimited
 -- set timing on
 

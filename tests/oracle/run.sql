@@ -19,48 +19,8 @@ begin execute immediate 'drop package pkg_dpl_test'; exception when others then 
 @@../../lib/oracle/packages/pkg_dpl_b.sql
 /
 
--- The test package names these tables in static SQL, so they must exist at compile time.
--- setup drops and recreates them when the suite runs.
-begin execute immediate 'drop table inc_test_seen purge'; exception when others then if sqlcode != -942 then raise; end if; end;
-/
-begin execute immediate 'drop table inc_test_expect purge'; exception when others then if sqlcode != -942 then raise; end if; end;
-/
-begin execute immediate 'drop table inc_test_tgt purge'; exception when others then if sqlcode != -942 then raise; end if; end;
-/
-begin execute immediate 'drop table inc_test_b purge'; exception when others then if sqlcode != -942 then raise; end if; end;
-/
-begin execute immediate 'drop table inc_test_a purge'; exception when others then if sqlcode != -942 then raise; end if; end;
-/
-create table inc_test_a (
-    id         varchar2(10) not null,
-    amount     number not null,
-    updated_at date not null,
-    constraint pk_inc_test_a primary key (id)
-);
-create table inc_test_b (
-    id         varchar2(10) not null,
-    amount     number not null,
-    updated_at date not null,
-    constraint pk_inc_test_b primary key (id)
-);
-create table inc_test_tgt (
-    id     varchar2(10) not null,
-    amount number not null,
-    touch  number not null,
-    constraint pk_inc_test_tgt primary key (id)
-);
-create table inc_test_expect (
-    id     varchar2(10) not null,
-    amount number not null,
-    touch  number not null,
-    constraint pk_inc_test_expect primary key (id)
-);
-create table inc_test_seen (
-    batch_no number not null,
-    id       varchar2(10) not null
-);
-
-@@pkg_dpl_test.sql
+@@helpers/tables.sql
+@@helpers/pkg_dpl_test.sql
 
 declare
     l_errors number;
@@ -76,5 +36,41 @@ begin
 end;
 /
 
-exec pkg_dpl_test.run
+@@cases/static_without_batches.sql
+@@cases/lookback_window.sql
+@@cases/static_batches.sql
+@@cases/same_result.sql
+@@cases/resume_same_batch.sql
+@@cases/batch_guards.sql
+@@cases/one_pk_one_batch.sql
+@@cases/rollback_without_commit.sql
+@@cases/volume.sql
+
+begin
+    dbms_output.put_line('pkg_dpl_test: passed');
+end;
+/
+
+@@demo/pkg_dpl_demo_s.sql
+/
+@@demo/pkg_dpl_demo_b.sql
+/
+
+declare
+    l_errors number;
+begin
+    select count(*)
+    into l_errors
+    from user_errors
+    where name = 'PKG_DPL_DEMO';
+
+    if l_errors > 0 then
+        raise_application_error(-20000, 'pkg_dpl_demo did not compile, errors=' || l_errors);
+    end if;
+end;
+/
+
+@@demo/seed_customer_metrics.sql
+@@demo/example_customer_metrics.sql
+@@demo/check_customer_metrics.sql
 exit

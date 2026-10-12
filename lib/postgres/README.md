@@ -6,7 +6,7 @@ The steps are the same as in the [root README](../../README.md): `initialize`, `
 
 ## A run without batches
 
-`MERGE` is available on PostgreSQL 15 and later. The statement reads `dpl_keys_tmp`, restricted to the current target and segment. Greenplum has no `MERGE`; use `UPDATE` then `INSERT`, as in `examples/example_customer_metrics.sql`.
+`MERGE` is available on PostgreSQL 15 and later. The statement reads `dpl_keys_tmp`, restricted to the current target and segment. Greenplum has no `MERGE`; use `UPDATE` then `INSERT`, as in `tests/postgres/demo/example_customer_metrics.sql`.
 
 ```sql
 do $run$
@@ -197,7 +197,7 @@ end;
 $run$;
 ```
 
-A session with three sources is in `examples/example_customer_metrics.sql`. That file uses `UPDATE` followed by `INSERT`, which also runs on Greenplum 7.
+A session with three sources is in `tests/postgres/demo/example_customer_metrics.sql`. The suite seeds a small source and runs that file. It uses `UPDATE` followed by `INSERT`, which also runs on Greenplum 7.
 
 ## Transactions
 

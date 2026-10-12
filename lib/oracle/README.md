@@ -193,7 +193,7 @@ begin
 end;
 ```
 
-A session with three sources is in `examples/example_customer_metrics.sql`. `examples/seed_volume.sql` loads a large source and is not part of the tests.
+A session with three sources is in `tests/oracle/demo/example_customer_metrics.sql`. The suite seeds a small source and runs that file. `tests/oracle/demo/seed_volume.sql` loads a large source and is not part of the default run.
 
 ## Commits and resume
 

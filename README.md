@@ -7,7 +7,7 @@ The refresh statement is ordinary SQL. Batches are optional: a small target tabl
 - Oracle: [deploy](lib/oracle/deploy.md), [run](lib/oracle/README.md)
 - PostgreSQL and Greenplum: [deploy](lib/postgres/deploy.md), [run](lib/postgres/README.md)
 
-Library code is in `lib/oracle` and `lib/postgres`. Examples sit next to each engine. Tests stay in `tests/`.
+Library code is in `lib/oracle` and `lib/postgres`. Tests live in `tests`: helpers, one script per case, and a `demo` that the suite runs.
 
 ## How a run works
 
@@ -101,7 +101,7 @@ If a removal must reach the target table, keep a row in the source: a deleted fl
 
 ## Tests
 
-Both suites copy the scripts into a database container. The host does not need `sqlplus` or `psql`. They cover a static load, the lookback window, batches, a resume after rollback, and the errors that keep a watermark in place. The passing lines are `pkg_dpl_test: passed` and `dpl_test: passed`.
+Both suites copy the scripts into a database container. The host does not need `sqlplus` or `psql`. Helpers and one script per case live under `tests/oracle` and `tests/postgres`. They cover a static load, the lookback window, batches, a resume after rollback, the errors that keep a watermark in place, a capture-and-refresh at 1,000, 10,000, 100,000 and 1,000,000 keys, and the three-source demo. The passing lines are `pkg_dpl_test: passed`, `example_customer_metrics: passed` and `dpl_test: passed`.
 
 ```bash
 docker compose -f tests/docker/docker-compose.yml up --wait

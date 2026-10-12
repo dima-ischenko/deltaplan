@@ -10,49 +10,24 @@ create schema lib;
 \ir ../../lib/postgres/deploy.sql
 set search_path to lib, public;
 
-drop table if exists public.inc_test_seen;
-drop table if exists public.inc_test_expect;
-drop table if exists public.inc_test_tgt;
-drop table if exists public.inc_test_b;
-drop table if exists public.inc_test_a;
-drop table if exists inc_test_seen;
-drop table if exists inc_test_expect;
-drop table if exists inc_test_tgt;
-drop table if exists inc_test_b;
-drop table if exists inc_test_a;
-
-create table public.inc_test_a (
-    id         text not null,
-    amount     numeric not null,
-    updated_at timestamp not null,
-    primary key (id)
-);
-create table public.inc_test_b (
-    id         text not null,
-    amount     numeric not null,
-    updated_at timestamp not null,
-    primary key (id)
-);
-create table public.inc_test_tgt (
-    id     text not null,
-    amount numeric not null,
-    touch  numeric not null,
-    primary key (id)
-);
-create table public.inc_test_expect (
-    id     text not null,
-    amount numeric not null,
-    touch  numeric not null,
-    primary key (id)
-);
-create table public.inc_test_seen (
-    batch_no numeric not null,
-    id       text not null
-);
-
-\ir dpl_test.sql
+\ir helpers/tables.sql
+\ir helpers/helpers.sql
 
 delete from dpl_watermark
 where target_table in ('inc_test_tgt', 'other_tgt');
 
-call dpl_test.run();
+\ir cases/static_without_batches.sql
+\ir cases/lookback_window.sql
+\ir cases/static_batches.sql
+\ir cases/same_result.sql
+\ir cases/resume_same_batch.sql
+\ir cases/batch_guards.sql
+\ir cases/one_pk_one_batch.sql
+\ir cases/rollback_without_commit.sql
+\ir cases/volume.sql
+
+do $$ begin raise notice 'dpl_test: passed'; end; $$;
+
+\ir demo/seed_customer_metrics.sql
+\ir demo/example_customer_metrics.sql
+\ir demo/check_customer_metrics.sql

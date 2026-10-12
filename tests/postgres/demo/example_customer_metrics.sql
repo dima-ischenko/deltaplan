@@ -1,6 +1,5 @@
--- The same shape as lib/oracle/examples/example_customer_metrics.sql.
--- This file is an illustration. It expects customers, orders, order_items
--- and customer_metrics to exist already, and it is not part of the test run.
+-- The same shape as tests/oracle/demo/example_customer_metrics.sql.
+-- The suite seeds customers, orders, order_items and customer_metrics first.
 --
 -- Capture first isolates the changed rows, then joins. The load is UPDATE
 -- plus INSERT. That runs on PostgreSQL and on Greenplum 7, which has no MERGE.

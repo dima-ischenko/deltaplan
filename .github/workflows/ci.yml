@@ -16,7 +16,7 @@ jobs:
   postgres:
     name: PostgreSQL
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       PG_CONTAINER: dpl-postgres
       PGUSER: test_user
@@ -45,7 +45,7 @@ jobs:
   oracle:
     name: Oracle
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       ORACLE_CONTAINER: dpl-oracle
       ORACLE_CONNECT: test/test_pass@//localhost:1521/FREEPDB1
