@@ -238,9 +238,10 @@ language sql stable as $$
     where target_table = p_target;
 $$;
 
+-- No SET clause on this procedure: a SET attribute forbids COMMIT/ROLLBACK,
+-- and reset() must commit when called from here.
 create or replace procedure dpl_test.volume(p_rows integer)
-language plpgsql
-set search_path = pg_temp, lib, public as $$
+language plpgsql as $$
 declare
     l_name  text := 'volume_' || p_rows::text;
     l_cnt   bigint;
@@ -251,6 +252,7 @@ declare
     c_t1    constant timestamp := timestamp '2024-01-15 10:00:00';
     c_t2    constant timestamp := timestamp '2024-02-01 00:00:00';
 begin
+    set search_path = pg_temp, lib, public;
     call dpl_test.reset();
 
     insert into inc_test_a (id, amount, updated_at)

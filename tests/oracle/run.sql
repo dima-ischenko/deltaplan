@@ -51,6 +51,7 @@ begin
 end;
 /
 
+@@demo/compile_tables.sql
 @@demo/pkg_dpl_demo_s.sql
 /
 @@demo/pkg_dpl_demo_b.sql
@@ -65,6 +66,16 @@ begin
     where name = 'PKG_DPL_DEMO';
 
     if l_errors > 0 then
+        for r in (
+            select line, position, text
+            from user_errors
+            where name = 'PKG_DPL_DEMO'
+            order by sequence
+        ) loop
+            dbms_output.put_line(
+                'PKG_DPL_DEMO ' || r.line || '/' || r.position || ': ' || r.text
+            );
+        end loop;
         raise_application_error(-20000, 'pkg_dpl_demo did not compile, errors=' || l_errors);
     end if;
 end;
