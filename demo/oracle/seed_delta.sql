@@ -26,6 +26,7 @@ declare
     l_wm               date;
     l_max_updated      date;
     l_as_of            date;
+    l_upd_at           date;
     l_max_customer     number;
     l_max_order        number;
     l_from             number;
@@ -106,9 +107,13 @@ begin
     select max(id) into l_max_customer from customers;
     select max(id) into l_max_order from orders;
 
+    l_upd_at := l_as_of;
+    -- Simulated 2s gap between the update slice and the insert slice.
+    l_as_of := l_as_of + 2 / 86400;
+
     update customers
     set name = name || '-u',
-        updated_at = l_as_of
+        updated_at = l_upd_at
     where id <= l_upd;
 
     update orders
@@ -118,12 +123,12 @@ begin
                      else 'completed'
                  end,
         order_discount = least(order_discount + 0.05, 0.5),
-        updated_at = l_as_of
+        updated_at = l_upd_at
     where customer_id <= l_upd;
 
     update order_items
     set price = round(price + 1, 2),
-        updated_at = l_as_of
+        updated_at = l_upd_at
     where order_id <= l_upd * l_per_cust;
 
     insert into customers (id, name, region, updated_at)
@@ -194,7 +199,8 @@ begin
     i_log(
         'updated_customers=' || l_upd
         || ' new_customers=' || l_new
-        || ' as_of=' || to_char(l_as_of, 'yyyy-mm-dd hh24:mi:ss')
+        || ' updated_at=' || to_char(l_upd_at, 'yyyy-mm-dd hh24:mi:ss')
+        || ' inserted_at=' || to_char(l_as_of, 'yyyy-mm-dd hh24:mi:ss')
         || ' watermark=' || to_char(l_wm, 'yyyy-mm-dd hh24:mi:ss'),
         l_touch
     );
