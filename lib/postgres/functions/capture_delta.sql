@@ -17,7 +17,6 @@ declare
     l_stored   timestamp;
     l_bound    timestamp;
     l_ready    boolean;
-    l_open     boolean;
     l_count    integer;
     l_sql      text;
     l_rows     bigint;
@@ -26,8 +25,8 @@ begin
         raise exception 'DP-20001 Call initialize first';
     end if;
 
-    select target_table, data_segment, lookback_hours, batches_ready, apply_open
-    into l_target, l_segment, l_lookback, l_ready, l_open
+    select target_table, data_segment, lookback_hours, batches_ready
+    into l_target, l_segment, l_lookback, l_ready
     from dpl_session_tmp
     where id = 1;
 
@@ -56,7 +55,7 @@ begin
         raise exception 'DP-20002 lookback_hours must be >= 0';
     end if;
 
-    if l_ready or l_open or _unfinished() > 0 then
+    if l_ready or _unfinished() > 0 then
         raise exception 'DP-20013 capture_delta is closed after prepare_batches until finalize';
     end if;
 

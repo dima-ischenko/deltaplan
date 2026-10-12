@@ -23,7 +23,6 @@ begin
             batch_no        numeric,
             batch_size      numeric,
             batches_ready   boolean,
-            apply_open      boolean,
             constraint ck_dpl_session_tmp_id check (id = 1)
         ) on commit preserve rows%s
     $sql$, l_by_id);

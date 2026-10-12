@@ -26,10 +26,10 @@ begin
 
     insert into dpl_session_tmp (
         id, target_table, data_segment, lookback_hours,
-        batch_no, batch_size, batches_ready, apply_open
+        batch_no, batch_size, batches_ready
     ) values (
         1, l_target, l_segment, l_lookback,
-        null, null, false, false
+        null, null, false
     )
     on conflict (id) do update set
         target_table = excluded.target_table,
@@ -37,8 +37,7 @@ begin
         lookback_hours = excluded.lookback_hours,
         batch_no = null,
         batch_size = null,
-        batches_ready = false,
-        apply_open = false;
+        batches_ready = false;
 
     delete from dpl_keys_tmp
     where target_table = l_target

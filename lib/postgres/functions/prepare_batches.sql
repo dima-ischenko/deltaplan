@@ -65,8 +65,7 @@ begin
     update dpl_session_tmp
     set batches_ready = true,
         batch_no = null,
-        batch_size = case when l_keys = 0 then batch_size else p_batch_size end,
-        apply_open = false
+        batch_size = case when l_keys = 0 then batch_size else p_batch_size end
     where id = 1;
 
     if l_keys = 0 then
@@ -109,11 +108,8 @@ begin
     end if;
 
     if _unfinished() = 0 then
-        update dpl_session_tmp set apply_open = false where id = 1;
         raise notice 'prepare_batches: 0 | nothing left to apply';
         return;
     end if;
-
-    update dpl_session_tmp set apply_open = true where id = 1;
 end;
 $$;

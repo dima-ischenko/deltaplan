@@ -6,10 +6,8 @@ declare
     l_target     text;
     l_segment    text;
     l_ready      boolean;
-    l_open       boolean;
     l_left       integer;
     l_unassigned integer;
-    l_all_pk     bigint;
     l_sources    integer := 0;
     r            record;
     l_old        timestamp;
@@ -19,8 +17,8 @@ begin
         raise exception 'DP-20001 Call initialize first';
     end if;
 
-    select target_table, data_segment, batches_ready, apply_open
-    into l_target, l_segment, l_ready, l_open
+    select target_table, data_segment, batches_ready
+    into l_target, l_segment, l_ready
     from dpl_session_tmp
     where id = 1;
 
@@ -31,17 +29,7 @@ begin
     l_left := _unfinished();
     l_unassigned := _unassigned();
 
-    select count(*)
-    into l_all_pk
-    from (
-        select distinct pk_1, pk_2, pk_3
-        from dpl_keys_tmp
-        where target_table = l_target
-          and data_segment = l_segment
-    ) k;
-
     if l_left > 0
-       or (l_open and l_all_pk > 0)
        or (l_ready and l_unassigned > 0) then
         raise exception
             'DP-20005 unfinished batches for % (% left). Watermark was not moved. Finish the remaining batches before calling finalize.',
@@ -95,8 +83,7 @@ begin
         lookback_hours = 0,
         batch_no = null,
         batch_size = null,
-        batches_ready = false,
-        apply_open = false
+        batches_ready = false
     where id = 1;
 end;
 $$;

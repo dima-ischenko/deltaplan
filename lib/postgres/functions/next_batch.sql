@@ -11,13 +11,12 @@ declare
     l_target   text;
     l_segment  text;
     l_ready    boolean;
-    l_open     boolean;
     l_batch_no numeric;
     l_keys     bigint;
     l_next     numeric;
 begin
-    select target_table, data_segment, batches_ready, apply_open, batch_no
-    into l_target, l_segment, l_ready, l_open, l_batch_no
+    select target_table, data_segment, batches_ready, batch_no
+    into l_target, l_segment, l_ready, l_batch_no
     from dpl_session_tmp
     where id = 1;
 
@@ -35,7 +34,7 @@ begin
         raise exception 'DP-20019 batch % lost its keys; call initialize', l_batch_no;
     end if;
 
-    if not l_open then
+    if _unfinished() = 0 then
         return false;
     end if;
 
@@ -53,8 +52,7 @@ begin
         end if;
 
         update dpl_session_tmp
-        set batch_no = null,
-            apply_open = false
+        set batch_no = null
         where id = 1;
         delete from dpl_batch_tmp;
         raise notice 'next_batch: 0 | nothing left to apply';

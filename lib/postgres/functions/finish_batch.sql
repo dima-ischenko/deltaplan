@@ -10,7 +10,6 @@ declare
     l_segment  text;
     l_batch_no numeric;
     l_marked   bigint;
-    l_left     integer;
 begin
     select target_table, data_segment, batch_no
     into l_target, l_segment, l_batch_no
@@ -38,10 +37,8 @@ begin
 
     delete from dpl_batch_tmp;
 
-    l_left := _unfinished();
     update dpl_session_tmp
-    set batch_no = null,
-        apply_open = l_left > 0
+    set batch_no = null
     where id = 1;
 
     raise notice 'finish_batch: batch % marked=% merged=%',

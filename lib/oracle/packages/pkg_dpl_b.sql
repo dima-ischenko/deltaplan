@@ -7,10 +7,7 @@ create or replace package body pkg_dpl is
     gv_batch_size      number;
     gv_commit_batch    boolean := true;
     gv_batches_ready   boolean := false;
-    gv_apply_open      boolean := false;
     gv_output_ready    boolean := false;
-    gv_run_started     timestamp;
-    gv_batch_started   timestamp;
 
     function get_proc_name(p_proc_name varchar2) return varchar2 is
     begin
@@ -139,7 +136,6 @@ create or replace package body pkg_dpl is
         gv_batch_size := null;
         gv_commit_batch := true;
         gv_batches_ready := false;
-        gv_apply_open := false;
         i_log(p_proc_name, 0, 'rolled back, call initialize before the next run');
     end note_failure;
 
@@ -231,7 +227,6 @@ create or replace package body pkg_dpl is
         gv_batch_size := null;
         gv_commit_batch := true;
         gv_batches_ready := false;
-        gv_apply_open := false;
 
         delete from dpl_keys_tmp
         where target_table = gv_target_table
@@ -261,7 +256,6 @@ create or replace package body pkg_dpl is
             gv_batch_size := null;
             gv_commit_batch := true;
             gv_batches_ready := false;
-            gv_apply_open := false;
             raise;
         end;
     end initialize;
@@ -304,7 +298,7 @@ create or replace package body pkg_dpl is
             raise_application_error(-20002, 'lookback_hours must be >= 0');
         end if;
 
-        if gv_batches_ready or gv_apply_open or unfinished_batches > 0 then
+        if gv_batches_ready or unfinished_batches > 0 then
             raise_application_error(-20013, 'capture_delta is closed after prepare_batches until finalize');
         end if;
 
@@ -385,6 +379,7 @@ create or replace package body pkg_dpl is
         p_commit_batch  boolean default true
     ) is
         l_proc_name    varchar2(64) := get_proc_name('prepare_batches');
+        l_started      timestamp := systimestamp;
         l_commit_batch boolean := true;
         l_batch_size   number := p_batch_size;
         l_assigned     number := 0;
@@ -431,17 +426,15 @@ create or replace package body pkg_dpl is
 
         assert_no_open_batch;
 
-        gv_run_started := systimestamp;
         gv_commit_batch := l_commit_batch;
         gv_batches_ready := true;
         gv_batch_no := null;
 
         if l_key_total = 0 then
-            gv_apply_open := false;
             i_log(
                 l_proc_name,
                 0,
-                'no keys, nothing to apply ' || fmt_num(round(seconds_since(gv_run_started), 3)) || 's'
+                'no keys, nothing to apply ' || fmt_num(round(seconds_since(l_started), 3)) || 's'
             );
             return;
         end if;
@@ -498,12 +491,9 @@ create or replace package body pkg_dpl is
             l_left := unfinished_batches;
 
             if l_left = 0 then
-                gv_apply_open := false;
                 i_log(l_proc_name, 0, 'nothing left to apply batches=' || batch_total);
                 return;
             end if;
-
-            gv_apply_open := true;
         exception
             when others then
                 note_failure(l_proc_name, l_key_total, sqlerrm);
@@ -540,7 +530,7 @@ create or replace package body pkg_dpl is
 
         assert_no_open_batch;
 
-        if not gv_apply_open then
+        if unfinished_batches = 0 then
             return false;
         end if;
 
@@ -559,7 +549,6 @@ create or replace package body pkg_dpl is
                 end if;
 
                 gv_batch_no := null;
-                gv_apply_open := false;
                 delete from dpl_batch_tmp;
                 i_log(l_proc_name, 0, 'nothing left to apply batches=' || batch_total);
                 return false;
@@ -572,7 +561,6 @@ create or replace package body pkg_dpl is
             end if;
 
             gv_batch_no := l_next;
-            gv_batch_started := systimestamp;
             l_total := batch_total;
 
             i_log(
@@ -623,18 +611,12 @@ create or replace package body pkg_dpl is
 
             gv_batch_no := null;
 
-            if unfinished_batches = 0 then
-                gv_apply_open := false;
-            end if;
-
             i_log(
                 l_proc_name,
                 l_merged,
                 'batch ' || l_batch_no || '/' || l_total
                 || ' merged=' || l_merged
                 || case when gv_commit_batch then ' committed' else ' uncommitted' end
-                || ' batch_s=' || fmt_num(round(seconds_since(gv_batch_started), 3))
-                || ' total_s=' || fmt_num(round(seconds_since(gv_run_started), 3))
             );
         exception
             when others then
@@ -715,7 +697,6 @@ create or replace package body pkg_dpl is
           and rownum = 1;
 
         if l_left > 0
-           or (gv_apply_open and l_all_pk > 0)
            or (gv_batches_ready and l_unassigned > 0) then
             raise_application_error(
                 -20005,
@@ -725,7 +706,6 @@ create or replace package body pkg_dpl is
             );
         end if;
 
-        gv_apply_open := false;
         gv_batches_ready := false;
 
         for ir in (
@@ -821,7 +801,6 @@ create or replace package body pkg_dpl is
         gv_lookback_hours := 0;
         gv_batch_no := null;
         gv_batch_size := null;
-        gv_apply_open := false;
     exception
         when others then
             i_log(l_proc_name, nvl(l_all_pk, 0), 'failed ' || sqlerrm);
