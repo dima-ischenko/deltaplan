@@ -65,9 +65,9 @@ begin
                 group by pk_1
             )
             select c.id as customer_id,
-                   min(oi.quantity * oi.price * (1 - o.order_discount)) as min_amount,
-                   max(oi.quantity * oi.price * (1 - o.order_discount)) as max_amount,
-                   avg(oi.quantity * oi.price * (1 - o.order_discount)) as avg_amount,
+                   round(min(oi.quantity * oi.price * (1 - o.order_discount)), 2) as min_amount,
+                   round(max(oi.quantity * oi.price * (1 - o.order_discount)), 2) as max_amount,
+                   round(avg(oi.quantity * oi.price * (1 - o.order_discount)), 2) as avg_amount,
                    (array_agg(o.id order by o.order_date desc, o.id desc))[1] as last_order_id,
                    count(*) filter (where o.status = 'completed') as cnt_completed
             from customers c
@@ -77,7 +77,13 @@ begin
             group by c.id
         ) s
         on t.customer_id = s.customer_id
-        when matched then update set
+        when matched and (
+            case when t.min_amount is not distinct from s.min_amount then 0 else 1 end
+            + case when t.max_amount is not distinct from s.max_amount then 0 else 1 end
+            + case when t.avg_amount is not distinct from s.avg_amount then 0 else 1 end
+            + case when t.last_order_id is not distinct from s.last_order_id then 0 else 1 end
+            + case when t.cnt_completed is not distinct from s.cnt_completed then 0 else 1 end
+        ) > 0 then update set
             min_amount     = s.min_amount,
             max_amount     = s.max_amount,
             avg_amount     = s.avg_amount,

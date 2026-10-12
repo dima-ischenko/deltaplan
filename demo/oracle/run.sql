@@ -64,9 +64,9 @@ begin
                     group by pk_1
                 )
                 select c.id as customer_id,
-                       min(oi.quantity * oi.price * (1 - o.order_discount)) as min_amount,
-                       max(oi.quantity * oi.price * (1 - o.order_discount)) as max_amount,
-                       avg(oi.quantity * oi.price * (1 - o.order_discount)) as avg_amount,
+                       round(min(oi.quantity * oi.price * (1 - o.order_discount)), 2) as min_amount,
+                       round(max(oi.quantity * oi.price * (1 - o.order_discount)), 2) as max_amount,
+                       round(avg(oi.quantity * oi.price * (1 - o.order_discount)), 2) as avg_amount,
                        max(o.id) keep (dense_rank last order by o.order_date) as last_order_id,
                        count(case when o.status = 'completed' then 1 end) as cnt_completed
                 from customers c
@@ -83,6 +83,12 @@ begin
                 t.last_order_id  = s.last_order_id,
                 t.cnt_completed  = s.cnt_completed,
                 t.mt_change_date = l_change_date
+            where (decode(t.min_amount, s.min_amount, 0, 1) +
+                   decode(t.max_amount, s.max_amount, 0, 1) +
+                   decode(t.avg_amount, s.avg_amount, 0, 1) +
+                   decode(t.last_order_id, s.last_order_id, 0, 1) +
+                   decode(t.cnt_completed, s.cnt_completed, 0, 1)
+                  ) > 0
             when not matched then insert (
                 customer_id, min_amount, max_amount, avg_amount,
                 last_order_id, cnt_completed, mt_change_date

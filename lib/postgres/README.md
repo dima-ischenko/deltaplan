@@ -6,7 +6,7 @@ The steps are the same as in the [root README](../../README.md): `initialize`, `
 
 ## A run without batches
 
-`MERGE` is available on PostgreSQL 15 and later. The statement reads `dpl_keys_tmp`, restricted to the current target and segment. Greenplum has no `MERGE`; use `UPDATE` then `INSERT`, as in the batched example below.
+`MERGE` is available on PostgreSQL 15 and later. The statement reads `dpl_keys_tmp`, restricted to the current target and segment. A matched row is updated only when a business column changed. The `and` on `when matched` is a sum of `case` expressions: `is not distinct from` is the null-safe comparison Oracle `decode` uses, so null matches null. `mt_change_date` is not in that sum, because it is the load timestamp. Greenplum has no `MERGE`; use `UPDATE` then `INSERT`, and put the same sum in the `WHERE` of the `UPDATE`.
 
 ```sql
 do $run$
@@ -63,9 +63,9 @@ begin
             group by pk_1
         )
         select c.id as customer_id,
-               min(oi.quantity * oi.price * (1 - o.order_discount)) as min_amount,
-               max(oi.quantity * oi.price * (1 - o.order_discount)) as max_amount,
-               avg(oi.quantity * oi.price * (1 - o.order_discount)) as avg_amount,
+               round(min(oi.quantity * oi.price * (1 - o.order_discount)), 2) as min_amount,
+               round(max(oi.quantity * oi.price * (1 - o.order_discount)), 2) as max_amount,
+               round(avg(oi.quantity * oi.price * (1 - o.order_discount)), 2) as avg_amount,
                count(*) filter (where o.status = 'completed') as cnt_completed
         from customers c
         join changed ch on ch.customer_id = c.id
@@ -74,7 +74,12 @@ begin
         group by c.id
     ) s
     on t.customer_id = s.customer_id
-    when matched then update set
+    when matched and (
+        case when t.min_amount is not distinct from s.min_amount then 0 else 1 end
+        + case when t.max_amount is not distinct from s.max_amount then 0 else 1 end
+        + case when t.avg_amount is not distinct from s.avg_amount then 0 else 1 end
+        + case when t.cnt_completed is not distinct from s.cnt_completed then 0 else 1 end
+    ) > 0 then update set
         min_amount     = s.min_amount,
         max_amount     = s.max_amount,
         avg_amount     = s.avg_amount,
@@ -152,9 +157,9 @@ begin
                 group by pk_1
             )
             select c.id as customer_id,
-                   min(oi.quantity * oi.price * (1 - o.order_discount)) as min_amount,
-                   max(oi.quantity * oi.price * (1 - o.order_discount)) as max_amount,
-                   avg(oi.quantity * oi.price * (1 - o.order_discount)) as avg_amount,
+                   round(min(oi.quantity * oi.price * (1 - o.order_discount)), 2) as min_amount,
+                   round(max(oi.quantity * oi.price * (1 - o.order_discount)), 2) as max_amount,
+                   round(avg(oi.quantity * oi.price * (1 - o.order_discount)), 2) as avg_amount,
                    count(*) filter (where o.status = 'completed') as cnt_completed
             from customers c
             join changed ch on ch.customer_id = c.id
@@ -163,7 +168,12 @@ begin
             group by c.id
         ) s
         on t.customer_id = s.customer_id
-        when matched then update set
+        when matched and (
+            case when t.min_amount is not distinct from s.min_amount then 0 else 1 end
+            + case when t.max_amount is not distinct from s.max_amount then 0 else 1 end
+            + case when t.avg_amount is not distinct from s.avg_amount then 0 else 1 end
+            + case when t.cnt_completed is not distinct from s.cnt_completed then 0 else 1 end
+        ) > 0 then update set
             min_amount     = s.min_amount,
             max_amount     = s.max_amount,
             avg_amount     = s.avg_amount,
@@ -185,7 +195,7 @@ end;
 $run$;
 ```
 
-A session with three sources is in `demo/postgres/run.sql`. Start from [`demo/README.md`](../../demo/README.md). That file uses `MERGE` (PostgreSQL 15+). Greenplum has no `MERGE`; use `UPDATE` then `INSERT` as in the batched example above.
+A session with three sources is in `demo/postgres/run.sql`. Start from [`demo/README.md`](../../demo/README.md). That file uses `MERGE` (PostgreSQL 15+). Greenplum has no `MERGE`; use `UPDATE` then `INSERT`, with the same sum in the `WHERE` of the `UPDATE`. `demo/postgres/seed_volume.sql` loads a large source and records the load time as the watermark. `demo/postgres/seed_delta.sql` plants a delta on that volume without reloading it.
 
 ## Transactions
 

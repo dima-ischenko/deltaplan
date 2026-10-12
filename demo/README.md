@@ -37,11 +37,12 @@ commit;
 ```sql
 @demo/oracle/tables.sql
 @demo/oracle/seed_volume.sql
+@demo/oracle/seed_delta.sql
 @demo/oracle/run.sql
 @demo/oracle/check.sql
 ```
 
-`seed_volume.sql` loads 100,000 customers, 1,000,000 orders and 30 items each (30,000,000 `order_items`), writes that load into `dpl_watermark`, then plants a 7% delta. `run.sql` therefore captures only the delta. Edit the constants at the top of `seed_volume.sql` to change the size.
+`seed_volume.sql` loads 100,000 customers, 1,000,000 orders and 30 items each (30,000,000 `order_items`) and writes the load time into `dpl_watermark`. The source rows stay on the base timestamp, so that watermark sits after all of them. `seed_delta.sql` then plants a 7% delta (half updates, half new customers) without reloading the volume. Run `seed_delta.sql` again to plant another slice. `run.sql` captures only rows newer than the watermark. Edit the constants at the top of `seed_volume.sql` and `seed_delta.sql` to change the size.
 
 With the docker stack from `tests/docker/docker-compose.yml`:
 
@@ -78,11 +79,12 @@ update orders set updated_at = clock_timestamp() where id = 101;
 ```sql
 \i demo/postgres/tables.sql
 \i demo/postgres/seed_volume.sql
+\i demo/postgres/seed_delta.sql
 \i demo/postgres/run.sql
 \i demo/postgres/check.sql
 ```
 
-Same default size as Oracle. Edit the constants at the top of `seed_volume.sql`.
+Same split as Oracle: `seed_volume.sql` loads the base, `seed_delta.sql` plants the 7% delta and can be run again on its own. Edit the constants at the top of those files.
 
 With the docker stack:
 

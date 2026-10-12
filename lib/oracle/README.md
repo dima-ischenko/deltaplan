@@ -6,7 +6,7 @@ The steps are the same as in the [root README](../../README.md): `initialize`, `
 
 ## A run without batches
 
-The merge reads `dpl_keys_tmp`, restricted to the current target and segment:
+The merge reads `dpl_keys_tmp`, restricted to the current target and segment. A matched row is updated only when a business column changed. The `where` clause is a sum of `decode` checks: `decode` returns 0 when the two values are equal, including null with null. `mt_change_date` is not in that sum, because it is the load timestamp.
 
 ```sql
 declare
@@ -62,9 +62,9 @@ begin
                 group by pk_1
             )
             select c.id as customer_id,
-                   min(oi.quantity * oi.price * (1 - o.order_discount)) as min_amount,
-                   max(oi.quantity * oi.price * (1 - o.order_discount)) as max_amount,
-                   avg(oi.quantity * oi.price * (1 - o.order_discount)) as avg_amount,
+                   round(min(oi.quantity * oi.price * (1 - o.order_discount)), 2) as min_amount,
+                   round(max(oi.quantity * oi.price * (1 - o.order_discount)), 2) as max_amount,
+                   round(avg(oi.quantity * oi.price * (1 - o.order_discount)), 2) as avg_amount,
                    count(case when o.status = 'completed' then 1 end) as cnt_completed
             from customers c
             join changed ch on ch.customer_id = c.id
@@ -79,6 +79,11 @@ begin
             t.avg_amount     = s.avg_amount,
             t.cnt_completed  = s.cnt_completed,
             t.mt_change_date = l_change_date
+        where (decode(t.min_amount, s.min_amount, 0, 1) +
+               decode(t.max_amount, s.max_amount, 0, 1) +
+               decode(t.avg_amount, s.avg_amount, 0, 1) +
+               decode(t.cnt_completed, s.cnt_completed, 0, 1)
+              ) > 0
         when not matched then insert (
             customer_id, min_amount, max_amount, avg_amount,
             cnt_completed, mt_change_date
@@ -150,9 +155,9 @@ begin
                     group by pk_1
                 )
                 select c.id as customer_id,
-                       min(oi.quantity * oi.price * (1 - o.order_discount)) as min_amount,
-                       max(oi.quantity * oi.price * (1 - o.order_discount)) as max_amount,
-                       avg(oi.quantity * oi.price * (1 - o.order_discount)) as avg_amount,
+                       round(min(oi.quantity * oi.price * (1 - o.order_discount)), 2) as min_amount,
+                       round(max(oi.quantity * oi.price * (1 - o.order_discount)), 2) as max_amount,
+                       round(avg(oi.quantity * oi.price * (1 - o.order_discount)), 2) as avg_amount,
                        count(case when o.status = 'completed' then 1 end) as cnt_completed
                 from customers c
                 join changed ch on ch.customer_id = c.id
@@ -167,6 +172,11 @@ begin
                 t.avg_amount     = s.avg_amount,
                 t.cnt_completed  = s.cnt_completed,
                 t.mt_change_date = l_change_date
+            where (decode(t.min_amount, s.min_amount, 0, 1) +
+                   decode(t.max_amount, s.max_amount, 0, 1) +
+                   decode(t.avg_amount, s.avg_amount, 0, 1) +
+                   decode(t.cnt_completed, s.cnt_completed, 0, 1)
+                  ) > 0
             when not matched then insert (
                 customer_id, min_amount, max_amount, avg_amount,
                 cnt_completed, mt_change_date
@@ -183,7 +193,7 @@ begin
 end;
 ```
 
-A session with three sources is in `demo/oracle/run.sql`. Start from [`demo/README.md`](../../demo/README.md). `demo/oracle/seed_volume.sql` loads a large source so the same `run.sql` can be timed against a delta.
+A session with three sources is in `demo/oracle/run.sql`. Start from [`demo/README.md`](../../demo/README.md). `demo/oracle/seed_volume.sql` loads a large source and records the load time as the watermark. `demo/oracle/seed_delta.sql` plants a delta on that volume without reloading it, so the same `run.sql` can be timed against the delta.
 
 ## Commits
 

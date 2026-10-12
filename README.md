@@ -11,7 +11,7 @@ Library code is in `lib/oracle` and `lib/postgres`. Tests live in `tests`. To tr
 
 ## Demo
 
-[`demo/`](demo/README.md) is the playground. `tables.sql` creates the source and target once. `seed.sql` loads three customers. `run.sql` is the incremental load — the file to read. `check.sql` shows `customer_metrics` and `dpl_watermark`. `seed_volume.sql` loads a larger source, records that load as the watermark, and plants a 7% delta; the same `run.sql` then captures only that delta.
+[`demo/`](demo/README.md) is the playground. `tables.sql` creates the source and target once. `seed.sql` loads three customers. `run.sql` is the incremental load — the file to read. `check.sql` shows `customer_metrics` and `dpl_watermark`. `seed_volume.sql` loads a larger source and records the load time as the watermark. `seed_delta.sql` plants a 7% delta on that volume without reloading it; the same `run.sql` then captures only that delta.
 
 ## How a run works
 
