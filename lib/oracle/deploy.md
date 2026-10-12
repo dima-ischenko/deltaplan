@@ -18,6 +18,6 @@ How to call the package after deploy: [README.md](README.md).
 
 ## Layout
 
-Tables live in `ddl_dml/`, the package in `packages/`, as in `rpd_data/lib` and `dwh_ato/lib`. The demo sits in `tests/oracle/demo/`. SQL\*Plus resolves `@@` against the working directory, so run the scripts from `lib/oracle/`.
+Tables live in `ddl_dml/`, the package in `packages/`, as in `rpd_data/lib` and `dwh_ato/lib`. After deploy, the playground is [`demo/oracle`](../../demo/README.md). SQL\*Plus resolves `@@` against the working directory, so run the deploy scripts from `lib/oracle/`.
 
 The calculating user must own the objects: the key tables are global temporary tables, and the package keeps its state in the session.

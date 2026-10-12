@@ -79,6 +79,30 @@ create or replace package body pkg_dpl is
         return l_cnt;
     end placeholder_count;
 
+    -- True when (p_sql) exposes p_col. Inner SQL errors other than a missing
+    -- p_col are re-raised. where 1 = 0 keeps this a parse of the shape only.
+    function capture_has_col(
+        p_sql   varchar2,
+        p_bound date,
+        p_col   varchar2
+    ) return boolean is
+        l_n number;
+    begin
+        execute immediate
+            'select count(*) from (select s.' || p_col
+            || ' from (' || p_sql || ') s where 1 = 0)'
+            using p_bound
+            into l_n;
+        return true;
+    exception
+        when others then
+            if sqlcode = -904
+               and instr(upper(sqlerrm), '"' || upper(p_col) || '"') > 0 then
+                return false;
+            end if;
+            raise;
+    end capture_has_col;
+
     function unfinished_batches return number is
         l_left number;
     begin
@@ -272,6 +296,8 @@ create or replace package body pkg_dpl is
         l_watermark    date;
         l_bound        date;
         l_insert_sql   clob;
+        l_pk2          varchar2(64);
+        l_pk3          varchar2(64);
         l_rows         number := 0;
         l_slice_rows   number := 0;
         l_slice_pk     number := 0;
@@ -306,6 +332,23 @@ create or replace package body pkg_dpl is
         -- Date arithmetic keeps the bound as DATE. Hours are a fraction of a day.
         l_bound := l_watermark - l_lookback / 24;
 
+        if not capture_has_col(p_sql, l_bound, 'pk_1')
+           or not capture_has_col(p_sql, l_bound, 'watermark') then
+            raise_application_error(
+                -20020,
+                'capture SQL must return pk_1 and watermark; pk_2 and pk_3 are optional'
+            );
+        end if;
+
+        l_pk2 := case
+                     when capture_has_col(p_sql, l_bound, 'pk_2') then 's.pk_2'
+                     else 'cast(null as varchar2(255))'
+                 end;
+        l_pk3 := case
+                     when capture_has_col(p_sql, l_bound, 'pk_3') then 's.pk_3'
+                     else 'cast(null as varchar2(255))'
+                 end;
+
         begin
         l_insert_sql := '
             begin
@@ -323,8 +366,8 @@ create or replace package body pkg_dpl is
                     :data_segment,
                     :source_table,
                     s.pk_1,
-                    s.pk_2,
-                    s.pk_3,
+                    ' || l_pk2 || ',
+                    ' || l_pk3 || ',
                     s.watermark
                 from (' || p_sql || ') s;
                 :cnt_out := sql%rowcount;

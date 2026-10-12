@@ -78,8 +78,7 @@ begin
     perform capture_delta(
         p_table,
         format(
-            'select id as pk_1, null::text as pk_2, null::text as pk_3, '
-            || 'updated_at as watermark from %I where updated_at > :since',
+            'select id as pk_1, updated_at as watermark from %I where updated_at > :since',
             p_table
         )
     );

@@ -28,6 +28,30 @@ where target_table in ('inc_test_tgt', 'other_tgt');
 
 do $$ begin raise notice 'dpl_test: passed'; end; $$;
 
-\ir demo/seed_customer_metrics.sql
-\ir demo/example_customer_metrics.sql
-\ir demo/check_customer_metrics.sql
+\ir ../../demo/postgres/tables.sql
+\ir ../../demo/postgres/seed.sql
+\ir ../../demo/postgres/run.sql
+\ir ../../demo/postgres/check.sql
+
+do $check$
+declare
+    l_metrics integer;
+    l_wm      integer;
+begin
+    select count(*) into l_metrics from customer_metrics;
+    select count(*)
+    into l_wm
+    from dpl_watermark
+    where target_table = 'customer_metrics'
+      and data_segment = 'all';
+
+    if l_metrics is distinct from 3 then
+        raise exception 'demo metrics=%, expected 3', l_metrics;
+    end if;
+    if l_wm is distinct from 3 then
+        raise exception 'demo watermarks=%, expected 3', l_wm;
+    end if;
+
+    raise notice 'demo: passed';
+end;
+$check$;

@@ -1,6 +1,7 @@
 -- p_lookback_hours null takes the value given to initialize.
 -- p_sql must contain :since exactly once.
 -- The placeholder is already the watermark minus the lookback offset.
+-- The statement must return pk_1 and watermark. pk_2 and pk_3 are optional.
 create or replace function capture_delta(
     p_source_table    text,
     p_sql             text,
@@ -19,6 +20,8 @@ declare
     l_ready    boolean;
     l_count    integer;
     l_sql      text;
+    l_pk2      text;
+    l_pk3      text;
     l_rows     bigint;
 begin
     if to_regclass('dpl_session_tmp') is null then
@@ -71,12 +74,54 @@ begin
 
     l_sql := regexp_replace(p_sql, ':since\M', '$1', 'gi');
 
+    begin
+        execute 'select s.pk_1 from (' || l_sql || ') s where false' using l_bound;
+    exception
+        when undefined_column then
+            if position('pk_1' in lower(sqlerrm)) > 0 then
+                raise exception 'DP-20020 capture SQL must return pk_1 and watermark; pk_2 and pk_3 are optional';
+            end if;
+            raise;
+    end;
+
+    begin
+        execute 'select s.watermark from (' || l_sql || ') s where false' using l_bound;
+    exception
+        when undefined_column then
+            if position('watermark' in lower(sqlerrm)) > 0 then
+                raise exception 'DP-20020 capture SQL must return pk_1 and watermark; pk_2 and pk_3 are optional';
+            end if;
+            raise;
+    end;
+
+    l_pk2 := 'null::text';
+    begin
+        execute 'select s.pk_2 from (' || l_sql || ') s where false' using l_bound;
+        l_pk2 := 's.pk_2';
+    exception
+        when undefined_column then
+            if position('pk_2' in lower(sqlerrm)) = 0 then
+                raise;
+            end if;
+    end;
+
+    l_pk3 := 'null::text';
+    begin
+        execute 'select s.pk_3 from (' || l_sql || ') s where false' using l_bound;
+        l_pk3 := 's.pk_3';
+    exception
+        when undefined_column then
+            if position('pk_3' in lower(sqlerrm)) = 0 then
+                raise;
+            end if;
+    end;
+
     execute
         'insert into dpl_keys_tmp (
             target_table, data_segment, source_table,
             pk_1, pk_2, pk_3, watermark
         )
-        select $2, $3, $4, s.pk_1, s.pk_2, s.pk_3, s.watermark
+        select $2, $3, $4, s.pk_1, ' || l_pk2 || ', ' || l_pk3 || ', s.watermark
         from (' || l_sql || ') s'
         using l_bound, l_target, l_segment, l_source;
 

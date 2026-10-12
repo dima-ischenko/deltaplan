@@ -22,6 +22,7 @@ create or replace package pkg_dpl is
     -- A null p_lookback_hours takes the value given to initialize.
     -- p_sql must contain :since exactly once.
     -- The placeholder is already the watermark minus the lookback offset.
+    -- The statement must return pk_1 and watermark. pk_2 and pk_3 are optional.
     procedure capture_delta(
         p_source_table    varchar2,
         p_sql             varchar2,

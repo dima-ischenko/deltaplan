@@ -19,6 +19,6 @@ How to call the functions after deploy: [README.md](README.md).
 
 ## Layout
 
-Tables live in `ddl_dml/`, routines in `functions/`. The demo sits in `tests/postgres/demo/`. `psql` resolves `\ir` against the file that contains it, so these can be run from any working directory.
+Tables live in `ddl_dml/`, routines in `functions/`. After deploy, the playground is [`demo/postgres`](../../demo/README.md). `psql` resolves `\ir` against the file that contains it, so the deploy scripts can be run from any working directory.
 
 On Greenplum, `dpl_watermark` is `DISTRIBUTED BY (target_table)`, and the temporary key tables are `DISTRIBUTED BY (pk_1)`.

@@ -6,7 +6,7 @@ The steps are the same as in the [root README](../../README.md): `initialize`, `
 
 ## A run without batches
 
-`MERGE` is available on PostgreSQL 15 and later. The statement reads `dpl_keys_tmp`, restricted to the current target and segment. Greenplum has no `MERGE`; use `UPDATE` then `INSERT`, as in `tests/postgres/demo/example_customer_metrics.sql`.
+`MERGE` is available on PostgreSQL 15 and later. The statement reads `dpl_keys_tmp`, restricted to the current target and segment. Greenplum has no `MERGE`; use `UPDATE` then `INSERT`, as in the batched example below.
 
 ```sql
 do $run$
@@ -22,8 +22,6 @@ begin
             where updated_at > :since
         )
         select id as pk_1,
-               null::text as pk_2,
-               null::text as pk_3,
                updated_at as watermark
         from changed_customers
     $sql$);
@@ -35,8 +33,6 @@ begin
             where updated_at > :since
         )
         select customer_id as pk_1,
-               null::text  as pk_2,
-               null::text  as pk_3,
                max(updated_at) as watermark
         from changed_orders
         group by customer_id
@@ -49,8 +45,6 @@ begin
             where updated_at > :since
         )
         select o.customer_id as pk_1,
-               null::text    as pk_2,
-               null::text    as pk_3,
                max(ci.updated_at) as watermark
         from changed_items ci
         join orders o on o.id = ci.order_id
@@ -117,8 +111,6 @@ begin
             where updated_at > :since
         )
         select id as pk_1,
-               null::text as pk_2,
-               null::text as pk_3,
                updated_at as watermark
         from changed_customers
     $sql$);
@@ -130,8 +122,6 @@ begin
             where updated_at > :since
         )
         select customer_id as pk_1,
-               null::text  as pk_2,
-               null::text  as pk_3,
                max(updated_at) as watermark
         from changed_orders
         group by customer_id
@@ -144,8 +134,6 @@ begin
             where updated_at > :since
         )
         select o.customer_id as pk_1,
-               null::text    as pk_2,
-               null::text    as pk_3,
                max(ci.updated_at) as watermark
         from changed_items ci
         join orders o on o.id = ci.order_id
@@ -197,7 +185,7 @@ end;
 $run$;
 ```
 
-A session with three sources is in `tests/postgres/demo/example_customer_metrics.sql`. The suite seeds a small source and runs that file. It uses `UPDATE` followed by `INSERT`, which also runs on Greenplum 7.
+A session with three sources is in `demo/postgres/run.sql`. Start from [`demo/README.md`](../../demo/README.md). That file uses `MERGE` (PostgreSQL 15+). Greenplum has no `MERGE`; use `UPDATE` then `INSERT` as in the batched example above.
 
 ## Transactions
 

@@ -7,7 +7,11 @@ The refresh statement is ordinary SQL. Batches are optional: a small target tabl
 - Oracle: [deploy](lib/oracle/deploy.md), [run](lib/oracle/README.md)
 - PostgreSQL and Greenplum: [deploy](lib/postgres/deploy.md), [run](lib/postgres/README.md)
 
-Library code is in `lib/oracle` and `lib/postgres`. Tests live in `tests`: helpers, one script per case, and a `demo` that the suite runs.
+Library code is in `lib/oracle` and `lib/postgres`. Tests live in `tests`. To try the library, start at [`demo/`](demo/README.md).
+
+## Demo
+
+[`demo/`](demo/README.md) is the playground. `tables.sql` creates the source and target once. `seed.sql` loads three customers. `run.sql` is the incremental load — the file to read. `check.sql` shows `customer_metrics` and `dpl_watermark`. `seed_volume.sql` loads a larger source, records that load as the watermark, and plants a 7% delta; the same `run.sql` then captures only that delta.
 
 ## How a run works
 
@@ -20,7 +24,7 @@ A key that arrives from several sources is assigned to a single batch.
 
 ## Capture SQL
 
-The capture statement must return four columns: `pk_1`, `pk_2`, `pk_3`, and `watermark`. Leave `pk_2` and `pk_3` null when the key is shorter.
+The capture statement must return `pk_1` and `watermark`. Add `pk_2` and `pk_3` when the key is longer; omitted columns are stored as null.
 
 The statement must contain the placeholder `:since` exactly once. `:since` is the stored watermark minus the lookback; it is not the stored watermark itself. The predicate remains strict: `value > :since`. The lookback is applied when the bound is read and is not stored.
 
@@ -72,8 +76,6 @@ pkg_dpl.initialize('customer_metrics', 'fr', 2);
 
 pkg_dpl.capture_delta('orders', q'[
     select customer_id as pk_1,
-           null        as pk_2,
-           null        as pk_3,
            max(updated_at) as watermark
     from orders
     where country_code = pkg_dpl.get_data_segment
@@ -103,7 +105,7 @@ If a removal must reach the target table, keep a row in the source: a deleted fl
 
 ## Tests
 
-Both suites copy the scripts into a database container. The host does not need `sqlplus` or `psql`. Helpers and one script per case live under `tests/oracle` and `tests/postgres`. They cover a static load, the lookback window, batches, a full rerun after a failed batch, the errors that keep a watermark in place, a capture-and-refresh at 1,000, 10,000, 100,000 and 1,000,000 keys, and the three-source demo. The passing lines are `pkg_dpl_test: passed`, `example_customer_metrics: passed` and `dpl_test: passed`.
+Both suites copy the scripts into a database container. The host does not need `sqlplus` or `psql`. Helpers and one script per case live under `tests/oracle` and `tests/postgres`. They cover a static load, the lookback window, batches, a full rerun after a failed batch, the errors that keep a watermark in place, a capture-and-refresh at 1,000, 10,000, 100,000 and 1,000,000 keys, and the scripts in `demo/`. The passing lines are `pkg_dpl_test: passed`, `demo: passed` and `dpl_test: passed`.
 
 ```bash
 docker compose -f tests/docker/docker-compose.yml up --wait

@@ -21,8 +21,6 @@ begin
             where updated_at > :since
         )
         select id as pk_1,
-               null as pk_2,
-               null as pk_3,
                updated_at as watermark
         from changed_customers
     ]');
@@ -34,8 +32,6 @@ begin
             where updated_at > :since
         )
         select customer_id as pk_1,
-               null        as pk_2,
-               null        as pk_3,
                max(updated_at) as watermark
         from changed_orders
         group by customer_id
@@ -48,8 +44,6 @@ begin
             where updated_at > :since
         )
         select o.customer_id as pk_1,
-               null          as pk_2,
-               null          as pk_3,
                max(ci.updated_at) as watermark
         from changed_items ci
         join orders o on o.id = ci.order_id
@@ -115,8 +109,6 @@ begin
             where updated_at > :since
         )
         select id as pk_1,
-               null as pk_2,
-               null as pk_3,
                updated_at as watermark
         from changed_customers
     ]');
@@ -128,8 +120,6 @@ begin
             where updated_at > :since
         )
         select customer_id as pk_1,
-               null        as pk_2,
-               null        as pk_3,
                max(updated_at) as watermark
         from changed_orders
         group by customer_id
@@ -142,8 +132,6 @@ begin
             where updated_at > :since
         )
         select o.customer_id as pk_1,
-               null          as pk_2,
-               null          as pk_3,
                max(ci.updated_at) as watermark
         from changed_items ci
         join orders o on o.id = ci.order_id
@@ -195,7 +183,7 @@ begin
 end;
 ```
 
-A session with three sources is in `tests/oracle/demo/example_customer_metrics.sql`. The suite seeds a small source and runs that file. `tests/oracle/demo/seed_volume.sql` loads a large source and is not part of the default run.
+A session with three sources is in `demo/oracle/run.sql`. Start from [`demo/README.md`](../../demo/README.md). `demo/oracle/seed_volume.sql` loads a large source so the same `run.sql` can be timed against a delta.
 
 ## Commits
 

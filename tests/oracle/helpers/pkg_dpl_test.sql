@@ -87,8 +87,6 @@ create or replace package body pkg_dpl_test is
             p_source_table => p_table,
             p_sql =>
                 'select id as pk_1,'
-                || ' null as pk_2,'
-                || ' null as pk_3,'
                 || ' updated_at as watermark'
                 || ' from ' || p_table
                 || ' where updated_at > :since'

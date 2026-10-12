@@ -51,37 +51,30 @@ begin
 end;
 /
 
-@@demo/compile_tables.sql
-@@demo/pkg_dpl_demo_s.sql
-/
-@@demo/pkg_dpl_demo_b.sql
-/
+@@../../demo/oracle/tables.sql
+@@../../demo/oracle/seed.sql
+@@../../demo/oracle/run.sql
+@@../../demo/oracle/check.sql
 
 declare
-    l_errors number;
+    l_metrics number;
+    l_wm      number;
 begin
+    select count(*) into l_metrics from customer_metrics;
     select count(*)
-    into l_errors
-    from user_errors
-    where name = 'PKG_DPL_DEMO';
+    into l_wm
+    from dpl_watermark
+    where target_table = 'customer_metrics'
+      and data_segment = 'all';
 
-    if l_errors > 0 then
-        for r in (
-            select line, position, text
-            from user_errors
-            where name = 'PKG_DPL_DEMO'
-            order by sequence
-        ) loop
-            dbms_output.put_line(
-                'PKG_DPL_DEMO ' || r.line || '/' || r.position || ': ' || r.text
-            );
-        end loop;
-        raise_application_error(-20000, 'pkg_dpl_demo did not compile, errors=' || l_errors);
+    if l_metrics != 3 then
+        raise_application_error(-20000, 'demo metrics=' || l_metrics || ', expected 3');
     end if;
+    if l_wm != 3 then
+        raise_application_error(-20000, 'demo watermarks=' || l_wm || ', expected 3');
+    end if;
+
+    dbms_output.put_line('demo: passed');
 end;
 /
-
-@@demo/seed_customer_metrics.sql
-@@demo/example_customer_metrics.sql
-@@demo/check_customer_metrics.sql
 exit

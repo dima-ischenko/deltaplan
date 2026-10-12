@@ -1,5 +1,8 @@
--- Empty tables so pkg_dpl_demo can compile. Static SQL in the package body
--- names these objects. seed_customer_metrics.sql recreates the business ones.
+-- Source tables and the target. Run this once, then seed.sql or seed_volume.sql.
+begin execute immediate 'drop table demo_numbers purge'; exception when others then if sqlcode != -942 then raise; end if; end;
+/
+begin execute immediate 'drop table demo_seed_state purge'; exception when others then if sqlcode != -942 then raise; end if; end;
+/
 begin execute immediate 'drop table order_items purge'; exception when others then if sqlcode != -942 then raise; end if; end;
 /
 begin execute immediate 'drop table orders purge'; exception when others then if sqlcode != -942 then raise; end if; end;
@@ -8,15 +11,6 @@ begin execute immediate 'drop table customers purge'; exception when others then
 /
 begin execute immediate 'drop table customer_metrics purge'; exception when others then if sqlcode != -942 then raise; end if; end;
 /
-begin execute immediate 'drop table demo_numbers purge'; exception when others then if sqlcode != -942 then raise; end if; end;
-/
-begin execute immediate 'drop table demo_seed_state purge'; exception when others then if sqlcode != -942 then raise; end if; end;
-/
-
-create table demo_numbers (
-    n number not null,
-    constraint pk_demo_numbers primary key (n)
-);
 
 create table customers (
     id         number not null,
@@ -57,16 +51,4 @@ create table customer_metrics (
     constraint pk_customer_metrics primary key (customer_id)
 );
 
-create table demo_seed_state (
-    id                     number not null,
-    customers              number not null,
-    orders                 number not null,
-    items_per_order        number not null,
-    base_updated_at        date not null,
-    waves                  number default 0 not null,
-    last_delta_at          date,
-    last_updated_customers number,
-    last_new_customers     number,
-    constraint pk_demo_seed_state primary key (id),
-    constraint ck_demo_seed_state_id check (id = 1)
-);
+@@indexes.sql
