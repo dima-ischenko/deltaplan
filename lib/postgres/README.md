@@ -1,40 +1,28 @@
 # PostgreSQL and Greenplum
 
-Deploy into a schema you choose, then put that schema on `search_path`. See [deploy](deploy.md).
+[Deploy](deploy.md) into a schema and put that schema on `search_path`. Methods and parameters: [root README](../../README.md). From SQL, call the functions with `select`. From PL/pgSQL, use `perform`.
 
-The steps are the same as in the [root README](../../README.md): `initialize`, `capture_delta` for each source, the refresh statement, `finalize`. From SQL, call them with `select`. From PL/pgSQL, use `perform`. `next_batch` returns boolean, so a `WHILE` loop works inside a `DO` block.
-
-## A run without batches
-
-`MERGE` is available on PostgreSQL 15 and later. The statement reads `dpl_keys_tmp`, restricted to the current target and segment. A matched row is updated only when a business column changed. The `and` on `when matched` is a sum of `case` expressions: `is not distinct from` is the null-safe comparison Oracle `decode` uses, so null matches null. `mt_change_date` is not in that sum, because it is the load timestamp. Greenplum has no `MERGE`; use `UPDATE` then `INSERT`, and put the same sum in the `WHERE` of the `UPDATE`.
+Without batches, one refresh reads `dpl_keys_tmp` for the current target and segment. With batches, each refresh reads `dpl_batch_tmp`. `MERGE` needs PostgreSQL 15+. Greenplum has no `MERGE`: use `UPDATE` then `INSERT`.
 
 ```sql
 do $run$
 declare
-    v_change_date timestamptz;
+    v_change_date timestamp := clock_timestamp();
 begin
     perform initialize('customer_metrics', 'all', 2);
 
     perform capture_delta('customers', $sql$
-        with changed_customers as (
-            select id, updated_at
-            from customers
-            where updated_at > :since
-        )
-        select id as pk_1,
+        select id::text as pk_1,
                updated_at as watermark
-        from changed_customers
+        from customers
+        where updated_at > :since
     $sql$);
 
     perform capture_delta('orders', $sql$
-        with changed_orders as (
-            select customer_id, updated_at
-            from orders
-            where updated_at > :since
-        )
-        select customer_id as pk_1,
+        select customer_id::text as pk_1,
                max(updated_at) as watermark
-        from changed_orders
+        from orders
+        where updated_at > :since
         group by customer_id
     $sql$);
 
@@ -44,147 +32,63 @@ begin
             from order_items
             where updated_at > :since
         )
-        select o.customer_id as pk_1,
+        select o.customer_id::text as pk_1,
                max(ci.updated_at) as watermark
         from changed_items ci
         join orders o on o.id = ci.order_id
         group by o.customer_id
     $sql$);
 
-    v_change_date := clock_timestamp();
-
-    merge into customer_metrics t
-    using (
-        with changed as (
-            select pk_1 as customer_id
-            from dpl_keys_tmp
-            where target_table = get_target_table()
-              and data_segment = get_data_segment()
-            group by pk_1
-        )
-        select c.id as customer_id,
-               round(min(oi.quantity * oi.price * (1 - o.order_discount)), 2) as min_amount,
-               round(max(oi.quantity * oi.price * (1 - o.order_discount)), 2) as max_amount,
-               round(avg(oi.quantity * oi.price * (1 - o.order_discount)), 2) as avg_amount,
-               count(*) filter (where o.status = 'completed') as cnt_completed
-        from customers c
-        join changed ch on ch.customer_id = c.id
-        join orders o on o.customer_id = c.id
-        join order_items oi on oi.order_id = o.id
-        group by c.id
-    ) s
-    on t.customer_id = s.customer_id
-    when matched and (
-        case when t.min_amount is not distinct from s.min_amount then 0 else 1 end
-        + case when t.max_amount is not distinct from s.max_amount then 0 else 1 end
-        + case when t.avg_amount is not distinct from s.avg_amount then 0 else 1 end
-        + case when t.cnt_completed is not distinct from s.cnt_completed then 0 else 1 end
-    ) > 0 then update set
-        min_amount     = s.min_amount,
-        max_amount     = s.max_amount,
-        avg_amount     = s.avg_amount,
-        cnt_completed  = s.cnt_completed,
-        mt_change_date = v_change_date
-    when not matched then insert (
-        customer_id, min_amount, max_amount, avg_amount,
-        cnt_completed, mt_change_date
-    ) values (
-        s.customer_id, s.min_amount, s.max_amount, s.avg_amount,
-        s.cnt_completed, v_change_date
-    );
-
-    perform finalize();
-end;
-$run$;
-```
-
-## A run in batches
-
-The merge is the same, except that it reads `dpl_batch_tmp`.
-
-```sql
-do $run$
-declare
-    v_change_date timestamptz;
-begin
-    perform initialize('customer_metrics', 'all', 2);
-
-    perform capture_delta('customers', $sql$
-        with changed_customers as (
-            select id, updated_at
-            from customers
-            where updated_at > :since
-        )
-        select id as pk_1,
-               updated_at as watermark
-        from changed_customers
-    $sql$);
-
-    perform capture_delta('orders', $sql$
-        with changed_orders as (
-            select customer_id, updated_at
-            from orders
-            where updated_at > :since
-        )
-        select customer_id as pk_1,
-               max(updated_at) as watermark
-        from changed_orders
-        group by customer_id
-    $sql$);
-
-    perform capture_delta('order_items', $sql$
-        with changed_items as (
-            select order_id, updated_at
-            from order_items
-            where updated_at > :since
-        )
-        select o.customer_id as pk_1,
-               max(ci.updated_at) as watermark
-        from changed_items ci
-        join orders o on o.id = ci.order_id
-        group by o.customer_id
-    $sql$);
-
-    v_change_date := clock_timestamp();
     perform prepare_batches(5000);
 
     while next_batch() loop
         merge into customer_metrics t
         using (
             with changed as (
-                select pk_1 as customer_id
+                select pk_1::integer as customer_id
                 from dpl_batch_tmp
                 group by pk_1
+            ),
+            order_amount as (
+                select c.id as customer_id,
+                       o.id as order_id,
+                       o.order_date,
+                       o.status,
+                       round(oi.quantity * oi.price * (1 - o.order_discount), 2) as amount
+                from customers c
+                join changed ch on ch.customer_id = c.id
+                join orders o on o.customer_id = c.id
+                join order_items oi on oi.order_id = o.id
             )
-            select c.id as customer_id,
-                   round(min(oi.quantity * oi.price * (1 - o.order_discount)), 2) as min_amount,
-                   round(max(oi.quantity * oi.price * (1 - o.order_discount)), 2) as max_amount,
-                   round(avg(oi.quantity * oi.price * (1 - o.order_discount)), 2) as avg_amount,
-                   count(*) filter (where o.status = 'completed') as cnt_completed
-            from customers c
-            join changed ch on ch.customer_id = c.id
-            join orders o on o.customer_id = c.id
-            join order_items oi on oi.order_id = o.id
-            group by c.id
+            select customer_id,
+                   min(amount) as min_amount,
+                   max(amount) as max_amount,
+                   round(avg(amount), 2) as avg_amount,
+                   (array_agg(order_id order by order_date desc, order_id desc))[1] as last_order_id,
+                   count(*) filter (where status = 'completed') as cnt_completed
+            from order_amount
+            group by customer_id
         ) s
         on t.customer_id = s.customer_id
         when matched and (
             case when t.min_amount is not distinct from s.min_amount then 0 else 1 end
             + case when t.max_amount is not distinct from s.max_amount then 0 else 1 end
             + case when t.avg_amount is not distinct from s.avg_amount then 0 else 1 end
+            + case when t.last_order_id is not distinct from s.last_order_id then 0 else 1 end
             + case when t.cnt_completed is not distinct from s.cnt_completed then 0 else 1 end
         ) > 0 then update set
             min_amount     = s.min_amount,
             max_amount     = s.max_amount,
             avg_amount     = s.avg_amount,
+            last_order_id  = s.last_order_id,
             cnt_completed  = s.cnt_completed,
             mt_change_date = v_change_date
         when not matched then insert (
             customer_id, min_amount, max_amount, avg_amount,
-            cnt_completed, mt_change_date
+            last_order_id, cnt_completed, mt_change_date
         ) values (
             s.customer_id, s.min_amount, s.max_amount, s.avg_amount,
-            s.cnt_completed, v_change_date
+            s.last_order_id, s.cnt_completed, v_change_date
         );
 
         perform finish_batch();
@@ -195,20 +99,8 @@ end;
 $run$;
 ```
 
-A session with three sources is in `demo/postgres/run.sql`. Start from [`demo/README.md`](../../demo/README.md). That file uses `MERGE` (PostgreSQL 15+). Greenplum has no `MERGE`; use `UPDATE` then `INSERT`, with the same sum in the `WHERE` of the `UPDATE`. `demo/postgres/seed_volume.sql` loads a large source and records the load time as the watermark. `demo/postgres/seed_delta.sql` plants a delta on that volume without reloading it.
+The same script is `demo/postgres/run.sql`. See [`demo/README.md`](../../demo/README.md).
 
-## Transactions
+The functions do not commit. Commit after each `finish_batch` and after `finalize`. A rollback of `initialize` drops the session temp tables.
 
-The functions do not commit. `dpl_watermark` is created in the install schema. `initialize` creates the temporary tables for the session. If that transaction is rolled back, the temporary tables are dropped with it, and `initialize` must be called again.
-
-Commit after each `finish_batch` to keep that batch in the target, and after `finalize` to store the watermark. Until that last commit the watermark does not move. A failed task is run again from `initialize`. The refresh statement has to be idempotent.
-
-`next_batch`, the refresh statement, and `finish_batch` stay in one transaction. A commit empties `dpl_batch_tmp`, so a commit between `next_batch` and the refresh statement drops the keys of the open batch.
-
-`finish_batch` takes an optional row count, `p_merged`, because it cannot see the caller's `ROW_COUNT`.
-
-## Greenplum
-
-The same [deploy](deploy.md) file is used on Greenplum 7. The functions do not commit, so they run on releases that forbid a commit inside a function. Greenplum has no `MERGE`. `dpl_watermark` is `DISTRIBUTED BY (target_table)`, and the temporary key tables are `DISTRIBUTED BY (pk_1)`.
-
-The suite was run on PostgreSQL 15.4. A Greenplum cluster was not started here.
+On Greenplum 7 the same [deploy](deploy.md) is used. Pass `p_merged` to `finish_batch` when the log should show the refresh row count.

@@ -63,18 +63,26 @@ begin
                 select pk_1::integer as customer_id
                 from dpl_batch_tmp
                 group by pk_1
+            ),
+            order_amount as (
+                select c.id as customer_id,
+                       o.id as order_id,
+                       o.order_date,
+                       o.status,
+                       round(oi.quantity * oi.price * (1 - o.order_discount), 2) as amount
+                from customers c
+                join changed ch on ch.customer_id = c.id
+                join orders o on o.customer_id = c.id
+                join order_items oi on oi.order_id = o.id
             )
-            select c.id as customer_id,
-                   round(min(oi.quantity * oi.price * (1 - o.order_discount)), 2) as min_amount,
-                   round(max(oi.quantity * oi.price * (1 - o.order_discount)), 2) as max_amount,
-                   round(avg(oi.quantity * oi.price * (1 - o.order_discount)), 2) as avg_amount,
-                   (array_agg(o.id order by o.order_date desc, o.id desc))[1] as last_order_id,
-                   count(*) filter (where o.status = 'completed') as cnt_completed
-            from customers c
-            join changed ch on ch.customer_id = c.id
-            join orders o on o.customer_id = c.id
-            join order_items oi on oi.order_id = o.id
-            group by c.id
+            select customer_id,
+                   min(amount) as min_amount,
+                   max(amount) as max_amount,
+                   round(avg(amount), 2) as avg_amount,
+                   (array_agg(order_id order by order_date desc, order_id desc))[1] as last_order_id,
+                   count(*) filter (where status = 'completed') as cnt_completed
+            from order_amount
+            group by customer_id
         ) s
         on t.customer_id = s.customer_id
         when matched and (

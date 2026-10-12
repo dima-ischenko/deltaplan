@@ -35,13 +35,13 @@ begin
     select count(*)::integer
     into l_diff
     from (
-        select id, amount, touch from inc_test_tgt
-        except
-        select id, amount, touch from inc_test_expect
+        (select id, amount, touch from inc_test_tgt
+         except
+         select id, amount, touch from inc_test_expect)
         union all
-        select id, amount, touch from inc_test_expect
-        except
-        select id, amount, touch from inc_test_tgt
+        (select id, amount, touch from inc_test_expect
+         except
+         select id, amount, touch from inc_test_tgt)
     ) d;
     call dpl_test.eq('same rows', l_diff::text, '0');
     call dpl_test.eq('same wm a', dpl_test.wm('inc_test_a'), l_wm_a);

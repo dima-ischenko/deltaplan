@@ -62,18 +62,26 @@ begin
                            pk_1 as customer_id
                     from dpl_batch_tmp
                     group by pk_1
+                ),
+                order_amount as (
+                    select c.id as customer_id,
+                           o.id as order_id,
+                           o.order_date,
+                           o.status,
+                           round(oi.quantity * oi.price * (1 - o.order_discount), 2) as amount
+                    from customers c
+                    join changed ch on ch.customer_id = c.id
+                    join orders o on o.customer_id = c.id
+                    join order_items oi on oi.order_id = o.id
                 )
-                select c.id as customer_id,
-                       round(min(oi.quantity * oi.price * (1 - o.order_discount)), 2) as min_amount,
-                       round(max(oi.quantity * oi.price * (1 - o.order_discount)), 2) as max_amount,
-                       round(avg(oi.quantity * oi.price * (1 - o.order_discount)), 2) as avg_amount,
-                       max(o.id) keep (dense_rank last order by o.order_date) as last_order_id,
-                       count(case when o.status = 'completed' then 1 end) as cnt_completed
-                from customers c
-                join changed ch on ch.customer_id = c.id
-                join orders o on o.customer_id = c.id
-                join order_items oi on oi.order_id = o.id
-                group by c.id
+                select customer_id,
+                       min(amount) as min_amount,
+                       max(amount) as max_amount,
+                       round(avg(amount), 2) as avg_amount,
+                       max(order_id) keep (dense_rank last order by order_date) as last_order_id,
+                       count(case when status = 'completed' then 1 end) as cnt_completed
+                from order_amount
+                group by customer_id
             ) s
             on (s.customer_id = t.customer_id)
             when matched then update set

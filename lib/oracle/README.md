@@ -1,39 +1,27 @@
 # Oracle
 
-Call `pkg_dpl` after you [deploy](deploy.md) it into the calculating user's schema.
+Call `pkg_dpl` after you [deploy](deploy.md) it into the calculating user's schema. Methods and parameters: [root README](../../README.md).
 
-The steps are the same as in the [root README](../../README.md): `initialize`, `capture_delta` for each source, the refresh statement, `finalize`.
-
-## A run without batches
-
-The merge reads `dpl_keys_tmp`, restricted to the current target and segment. A matched row is updated only when a business column changed. The `where` clause is a sum of `decode` checks: `decode` returns 0 when the two values are equal, including null with null. `mt_change_date` is not in that sum, because it is the load timestamp.
+Without batches, one refresh reads `dpl_keys_tmp` for the current target and segment. With batches, each refresh reads `dpl_batch_tmp`.
 
 ```sql
 declare
-    l_change_date date;
+    l_change_date date := sysdate;
 begin
     pkg_dpl.initialize('customer_metrics', 'all', 2);
 
     pkg_dpl.capture_delta('customers', q'[
-        with changed_customers as (
-            select id, updated_at
-            from customers
-            where updated_at > :since
-        )
         select id as pk_1,
                updated_at as watermark
-        from changed_customers
+        from customers
+        where updated_at > :since
     ]');
 
     pkg_dpl.capture_delta('orders', q'[
-        with changed_orders as (
-            select customer_id, updated_at
-            from orders
-            where updated_at > :since
-        )
         select customer_id as pk_1,
                max(updated_at) as watermark
-        from changed_orders
+        from orders
+        where updated_at > :since
         group by customer_id
     ]');
 
@@ -50,100 +38,6 @@ begin
         group by o.customer_id
     ]');
 
-    l_change_date := sysdate;
-
-    merge into customer_metrics t
-        using (
-            with changed as (
-                select pk_1 as customer_id
-                from dpl_keys_tmp
-                where target_table = pkg_dpl.get_target_table
-                  and data_segment = pkg_dpl.get_data_segment
-                group by pk_1
-            )
-            select c.id as customer_id,
-                   round(min(oi.quantity * oi.price * (1 - o.order_discount)), 2) as min_amount,
-                   round(max(oi.quantity * oi.price * (1 - o.order_discount)), 2) as max_amount,
-                   round(avg(oi.quantity * oi.price * (1 - o.order_discount)), 2) as avg_amount,
-                   count(case when o.status = 'completed' then 1 end) as cnt_completed
-            from customers c
-            join changed ch on ch.customer_id = c.id
-            join orders o on o.customer_id = c.id
-            join order_items oi on oi.order_id = o.id
-            group by c.id
-        ) s
-        on (s.customer_id = t.customer_id)
-        when matched then update set
-            t.min_amount     = s.min_amount,
-            t.max_amount     = s.max_amount,
-            t.avg_amount     = s.avg_amount,
-            t.cnt_completed  = s.cnt_completed,
-            t.mt_change_date = l_change_date
-        where (decode(t.min_amount, s.min_amount, 0, 1) +
-               decode(t.max_amount, s.max_amount, 0, 1) +
-               decode(t.avg_amount, s.avg_amount, 0, 1) +
-               decode(t.cnt_completed, s.cnt_completed, 0, 1)
-              ) > 0
-        when not matched then insert (
-            customer_id, min_amount, max_amount, avg_amount,
-            cnt_completed, mt_change_date
-        ) values (
-            s.customer_id, s.min_amount, s.max_amount, s.avg_amount,
-            s.cnt_completed, l_change_date
-        );
-
-    pkg_dpl.finalize;
-    commit;
-end;
-```
-
-## A run in batches
-
-The merge is the same, except that it reads `dpl_batch_tmp` and does not filter on target or segment: those keys already belong to the open batch.
-
-```sql
-declare
-    l_change_date date;
-begin
-    pkg_dpl.initialize('customer_metrics', 'all', 2);
-
-    pkg_dpl.capture_delta('customers', q'[
-        with changed_customers as (
-            select id, updated_at
-            from customers
-            where updated_at > :since
-        )
-        select id as pk_1,
-               updated_at as watermark
-        from changed_customers
-    ]');
-
-    pkg_dpl.capture_delta('orders', q'[
-        with changed_orders as (
-            select customer_id, updated_at
-            from orders
-            where updated_at > :since
-        )
-        select customer_id as pk_1,
-               max(updated_at) as watermark
-        from changed_orders
-        group by customer_id
-    ]');
-
-    pkg_dpl.capture_delta('order_items', q'[
-        with changed_items as (
-            select order_id, updated_at
-            from order_items
-            where updated_at > :since
-        )
-        select o.customer_id as pk_1,
-               max(ci.updated_at) as watermark
-        from changed_items ci
-        join orders o on o.id = ci.order_id
-        group by o.customer_id
-    ]');
-
-    l_change_date := sysdate;
     pkg_dpl.prepare_batches(5000);
 
     while pkg_dpl.next_batch loop
@@ -153,36 +47,47 @@ begin
                     select pk_1 as customer_id
                     from dpl_batch_tmp
                     group by pk_1
+                ),
+                order_amount as (
+                    select c.id as customer_id,
+                           o.id as order_id,
+                           o.order_date,
+                           o.status,
+                           round(oi.quantity * oi.price * (1 - o.order_discount), 2) as amount
+                    from customers c
+                    join changed ch on ch.customer_id = c.id
+                    join orders o on o.customer_id = c.id
+                    join order_items oi on oi.order_id = o.id
                 )
-                select c.id as customer_id,
-                       round(min(oi.quantity * oi.price * (1 - o.order_discount)), 2) as min_amount,
-                       round(max(oi.quantity * oi.price * (1 - o.order_discount)), 2) as max_amount,
-                       round(avg(oi.quantity * oi.price * (1 - o.order_discount)), 2) as avg_amount,
-                       count(case when o.status = 'completed' then 1 end) as cnt_completed
-                from customers c
-                join changed ch on ch.customer_id = c.id
-                join orders o on o.customer_id = c.id
-                join order_items oi on oi.order_id = o.id
-                group by c.id
+                select customer_id,
+                       min(amount) as min_amount,
+                       max(amount) as max_amount,
+                       round(avg(amount), 2) as avg_amount,
+                       max(order_id) keep (dense_rank last order by order_date) as last_order_id,
+                       count(case when status = 'completed' then 1 end) as cnt_completed
+                from order_amount
+                group by customer_id
             ) s
             on (s.customer_id = t.customer_id)
             when matched then update set
                 t.min_amount     = s.min_amount,
                 t.max_amount     = s.max_amount,
                 t.avg_amount     = s.avg_amount,
+                t.last_order_id  = s.last_order_id,
                 t.cnt_completed  = s.cnt_completed,
                 t.mt_change_date = l_change_date
             where (decode(t.min_amount, s.min_amount, 0, 1) +
                    decode(t.max_amount, s.max_amount, 0, 1) +
                    decode(t.avg_amount, s.avg_amount, 0, 1) +
+                   decode(t.last_order_id, s.last_order_id, 0, 1) +
                    decode(t.cnt_completed, s.cnt_completed, 0, 1)
                   ) > 0
             when not matched then insert (
                 customer_id, min_amount, max_amount, avg_amount,
-                cnt_completed, mt_change_date
+                last_order_id, cnt_completed, mt_change_date
             ) values (
                 s.customer_id, s.min_amount, s.max_amount, s.avg_amount,
-                s.cnt_completed, l_change_date
+                s.last_order_id, s.cnt_completed, l_change_date
             );
 
         pkg_dpl.finish_batch;
@@ -193,14 +98,6 @@ begin
 end;
 ```
 
-A session with three sources is in `demo/oracle/run.sql`. Start from [`demo/README.md`](../../demo/README.md). `demo/oracle/seed_volume.sql` loads a large source and records the load time as the watermark. `demo/oracle/seed_delta.sql` plants a delta on that volume without reloading it, so the same `run.sql` can be timed against the delta.
+The same script is `demo/oracle/run.sql`. See [`demo/README.md`](../../demo/README.md).
 
-## Commits
-
-`prepare_batches` takes `p_commit_batch`, default true. When it is true, `finish_batch` commits that batch, and the target keeps those rows. `finalize` does not commit. The `commit` after `finalize` stores the watermark.
-
-`p_commit_batch => false` leaves the whole run in one transaction. The caller commits once, after `finalize`.
-
-When a task fails, the session ends. The open batch rolls back. Batches that already reached `finish_batch` stay in the target, and the watermark stays where it was. The next task repeats `initialize`, `capture_delta`, and the batch loop.
-
-`finish_batch` records `sql%rowcount` of the preceding statement, so call it immediately after the refresh statement. Do not commit between `next_batch` and `finish_batch`: that commit empties `dpl_batch_tmp`.
+`finish_batch` commits when `p_commit_batch` is true (the default). `finalize` does not. Commit after `finalize` to store the watermark. `p_commit_batch => false` keeps the whole run in one transaction.

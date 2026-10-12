@@ -56,3 +56,15 @@ begin
     raise notice 'demo: passed';
 end;
 $check$;
+
+-- initial + incremental + seed delta + calc + seed delta + calc
+\i demo/postgres/run.sql
+\i tests/postgres/helpers/seed_demo_delta.sql
+\i demo/postgres/run.sql
+\i tests/postgres/helpers/seed_demo_delta.sql
+\i demo/postgres/run.sql
+
+-- full refresh must match the incremental result
+\i tests/postgres/helpers/snapshot_metrics.sql
+\i demo/postgres/run.sql
+\i tests/postgres/cases/demo_same_result.sql

@@ -38,13 +38,13 @@ begin
     select count(*)
     into l_diff
     from (
-        select id, amount, touch from inc_test_tgt
-        minus
-        select id, amount, touch from inc_test_expect
+        (select id, amount, touch from inc_test_tgt
+         minus
+         select id, amount, touch from inc_test_expect)
         union all
-        select id, amount, touch from inc_test_expect
-        minus
-        select id, amount, touch from inc_test_tgt
+        (select id, amount, touch from inc_test_expect
+         minus
+         select id, amount, touch from inc_test_tgt)
     );
 
     pkg_dpl_test.eq('same rows', to_char(l_diff), '0');
