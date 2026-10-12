@@ -29,6 +29,11 @@ where target_table in ('inc_test_tgt', 'other_tgt');
 
 do $$ begin raise notice 'dpl_test: passed'; end; $$;
 
+\i tests/postgres/helpers/metrics_tables.sql
+\i tests/postgres/helpers/run_metrics.sql
+\i tests/postgres/cases/metrics_same_result.sql
+\i tests/postgres/cases/metrics_silent_dml.sql
+
 \i demo/postgres/tables.sql
 \i demo/postgres/seed.sql
 \i demo/postgres/run.sql
@@ -56,15 +61,3 @@ begin
     raise notice 'demo: passed';
 end;
 $check$;
-
--- initial + incremental + seed delta + calc + seed delta + calc
-\i demo/postgres/run.sql
-\i tests/postgres/helpers/seed_demo_delta.sql
-\i demo/postgres/run.sql
-\i tests/postgres/helpers/seed_demo_delta.sql
-\i demo/postgres/run.sql
-
--- full refresh must match the incremental result
-\i tests/postgres/helpers/snapshot_metrics.sql
-\i demo/postgres/run.sql
-\i tests/postgres/cases/demo_same_result.sql

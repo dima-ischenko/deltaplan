@@ -53,6 +53,11 @@ begin
 end;
 /
 
+@tests/oracle/helpers/metrics_tables.sql
+@tests/oracle/helpers/run_metrics.sql
+@tests/oracle/cases/metrics_same_result.sql
+@tests/oracle/cases/metrics_silent_dml.sql
+
 @demo/oracle/tables.sql
 @demo/oracle/seed.sql
 @demo/oracle/run.sql
@@ -79,16 +84,4 @@ begin
     dbms_output.put_line('demo: passed');
 end;
 /
-
--- initial + incremental + seed delta + calc + seed delta + calc
-@demo/oracle/run.sql
-@tests/oracle/helpers/seed_demo_delta.sql
-@demo/oracle/run.sql
-@tests/oracle/helpers/seed_demo_delta.sql
-@demo/oracle/run.sql
-
--- full refresh must match the incremental result
-@tests/oracle/helpers/snapshot_metrics.sql
-@demo/oracle/run.sql
-@tests/oracle/cases/demo_same_result.sql
 exit
