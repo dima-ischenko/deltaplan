@@ -13,6 +13,7 @@ docker exec "$container" mkdir -p /tmp/dpl/lib/postgres /tmp/dpl/tests/postgres 
 docker cp lib/postgres/. "$container:/tmp/dpl/lib/postgres"
 docker cp tests/postgres/. "$container:/tmp/dpl/tests/postgres"
 docker cp demo/postgres/. "$container:/tmp/dpl/demo/postgres"
-docker exec -e PGPASSWORD="$password" "$container" \
+# \i lib/postgres/... is resolved from the working directory.
+docker exec -w /tmp/dpl -e PGPASSWORD="$password" "$container" \
     psql -U "$user" -d "$database" -v ON_ERROR_STOP=1 \
-    -f /tmp/dpl/tests/postgres/run.sql
+    -f tests/postgres/run.sql

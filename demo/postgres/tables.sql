@@ -40,4 +40,4 @@ create table customer_metrics (
     mt_change_date timestamp
 );
 
-\ir indexes.sql
+\i demo/postgres/indexes.sql

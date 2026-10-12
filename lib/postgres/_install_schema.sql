@@ -1,6 +1,6 @@
 -- Pick the schema that deploy.sql and rollback.sql install into.
 -- Pass -v dpl_schema=name, or leave it unset to use the session's current schema.
--- The schema must already exist. psql resolves \ir against this file's directory.
+-- The schema must already exist. Start from the repository root.
 \if :{?dpl_schema}
 set search_path to :"dpl_schema";
 \else

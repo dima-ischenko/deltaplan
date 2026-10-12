@@ -1,4 +1,5 @@
 -- Run the checks. tests/oracle/run.sh deploys pkg_dpl first from lib/oracle.
+-- From the repository root:
 -- sqlplus user/password@//host:1521/service @tests/oracle/run.sql
 
 whenever sqlerror exit sql.sqlcode
@@ -10,8 +11,8 @@ set verify off
 begin execute immediate 'drop package pkg_dpl_test'; exception when others then if sqlcode != -4043 then raise; end if; end;
 /
 
-@@helpers/tables.sql
-@@helpers/pkg_dpl_test.sql
+@tests/oracle/helpers/tables.sql
+@tests/oracle/helpers/pkg_dpl_test.sql
 
 declare
     l_errors number;
@@ -37,25 +38,25 @@ begin
 end;
 /
 
-@@cases/static_without_batches.sql
-@@cases/lookback_window.sql
-@@cases/static_batches.sql
-@@cases/same_result.sql
-@@cases/rerun_after_failed_batch.sql
-@@cases/batch_guards.sql
-@@cases/one_pk_one_batch.sql
-@@cases/rollback_without_commit.sql
-@@cases/volume.sql
+@tests/oracle/cases/static_without_batches.sql
+@tests/oracle/cases/lookback_window.sql
+@tests/oracle/cases/static_batches.sql
+@tests/oracle/cases/same_result.sql
+@tests/oracle/cases/rerun_after_failed_batch.sql
+@tests/oracle/cases/batch_guards.sql
+@tests/oracle/cases/one_pk_one_batch.sql
+@tests/oracle/cases/rollback_without_commit.sql
+@tests/oracle/cases/volume.sql
 
 begin
     dbms_output.put_line('pkg_dpl_test: passed');
 end;
 /
 
-@@../../demo/oracle/tables.sql
-@@../../demo/oracle/seed.sql
-@@../../demo/oracle/run.sql
-@@../../demo/oracle/check.sql
+@demo/oracle/tables.sql
+@demo/oracle/seed.sql
+@demo/oracle/run.sql
+@demo/oracle/check.sql
 
 declare
     l_metrics number;

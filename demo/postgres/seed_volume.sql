@@ -195,7 +195,7 @@ begin
 end;
 $seed$;
 
-\ir indexes.sql
+\i demo/postgres/indexes.sql
 
 analyze customers;
 analyze orders;

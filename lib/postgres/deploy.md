@@ -2,6 +2,8 @@
 
 The same scripts deploy on Greenplum 7. Objects are created in an existing schema: the session's current schema, or the schema passed as `dpl_schema`.
 
+Start from the repository root. Nested scripts use `\i lib/postgres/...`, resolved from the working directory.
+
 ```bash
 psql "postgresql://user:password@localhost:5432/db" -v ON_ERROR_STOP=1 -f lib/postgres/deploy.sql
 psql "postgresql://user:password@localhost:5432/db" -v ON_ERROR_STOP=1 -v dpl_schema=analytics -f lib/postgres/deploy.sql
@@ -19,6 +21,6 @@ How to call the functions after deploy: [README.md](README.md).
 
 ## Layout
 
-Tables live in `ddl_dml/`, routines in `functions/`. After deploy, the playground is [`demo/postgres`](../../demo/README.md). `psql` resolves `\ir` against the file that contains it, so the deploy scripts can be run from any working directory.
+Tables live in `ddl_dml/`, routines in `functions/`. After deploy, the playground is [`demo/postgres`](../../demo/README.md).
 
 On Greenplum, `dpl_watermark` is `DISTRIBUTED BY (target_table)`, and the temporary key tables are `DISTRIBUTED BY (pk_1)`.

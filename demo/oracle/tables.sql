@@ -51,4 +51,4 @@ create table customer_metrics (
     constraint pk_customer_metrics primary key (customer_id)
 );
 
-@@indexes.sql
+@demo/oracle/indexes.sql

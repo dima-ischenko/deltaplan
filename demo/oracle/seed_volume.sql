@@ -301,14 +301,14 @@ begin
 end;
 /
 
-@@indexes.sql
+@demo/oracle/indexes.sql
 
 begin
     dbms_stats.gather_table_stats(user, 'CUSTOMERS', estimate_percent => 1, cascade => true);
     dbms_stats.gather_table_stats(user, 'ORDERS', estimate_percent => 1, cascade => true);
     dbms_stats.gather_table_stats(user, 'ORDER_ITEMS', estimate_percent => 1, cascade => true);
     dbms_stats.gather_table_stats(user, 'CUSTOMER_METRICS', estimate_percent => 100, cascade => true);
-    dbms_output.put_line(to_char(systimestamp, 'hh24:mi:ss.ff3') || ' seed_volume: stats gathered, next: @run.sql');
+    dbms_output.put_line(to_char(systimestamp, 'hh24:mi:ss.ff3') || ' seed_volume: stats gathered, next: @demo/oracle/run.sql');
 exception
     when others then
         dbms_output.put_line(to_char(systimestamp, 'hh24:mi:ss.ff3') || ' seed_volume: stats skipped ' || sqlerrm);

@@ -1,8 +1,8 @@
 -- Remove dpl from the current schema. Safe when objects are absent.
 -- Code first, then structure, the reverse of deploy.sql.
--- Start from lib/oracle/.
+-- Start from the repository root.
 
 whenever sqlerror exit sql.sqlcode
 
-@@rollback_code.sql
-@@rollback_structure.sql
+@lib/oracle/rollback_code.sql
+@lib/oracle/rollback_structure.sql

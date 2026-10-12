@@ -1,3 +1,3 @@
 ------- ddl_dml
-\ir ddl_dml/schema.sql
-\ir ddl_dml/dpl_watermark.sql
+\i lib/postgres/ddl_dml/schema.sql
+\i lib/postgres/ddl_dml/dpl_watermark.sql
