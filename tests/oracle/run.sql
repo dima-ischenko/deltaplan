@@ -40,7 +40,7 @@ end;
 @@cases/lookback_window.sql
 @@cases/static_batches.sql
 @@cases/same_result.sql
-@@cases/resume_same_batch.sql
+@@cases/rerun_after_failed_batch.sql
 @@cases/batch_guards.sql
 @@cases/one_pk_one_batch.sql
 @@cases/rollback_without_commit.sql

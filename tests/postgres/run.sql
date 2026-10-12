@@ -20,7 +20,7 @@ where target_table in ('inc_test_tgt', 'other_tgt');
 \ir cases/lookback_window.sql
 \ir cases/static_batches.sql
 \ir cases/same_result.sql
-\ir cases/resume_same_batch.sql
+\ir cases/rerun_after_failed_batch.sql
 \ir cases/batch_guards.sql
 \ir cases/one_pk_one_batch.sql
 \ir cases/rollback_without_commit.sql

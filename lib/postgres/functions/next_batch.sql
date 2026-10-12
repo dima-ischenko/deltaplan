@@ -1,7 +1,8 @@
 -- Returns true when a batch is open and its keys are in dpl_batch_tmp.
 -- Returns false when no unfinished batch remains.
--- After rollback both this flag and dpl_batch_tmp return to the last commit,
--- and the next call loads the unfinished batch again.
+-- next_batch, the refresh statement, and finish_batch stay in one transaction.
+-- A commit empties dpl_batch_tmp. If that commit happens before finish_batch,
+-- the open batch's keys are gone and the next call raises DP-20019.
 create or replace function next_batch()
 returns boolean
 language plpgsql
@@ -30,29 +31,12 @@ begin
     if l_batch_no is not null and exists (select 1 from dpl_batch_tmp) then
         raise exception 'DP-20014 batch % is open; call finish_batch', l_batch_no;
     end if;
-
-    if not l_open and l_batch_no is null then
-        return false;
+    if l_batch_no is not null then
+        raise exception 'DP-20019 batch % lost its keys; call initialize', l_batch_no;
     end if;
 
-    if l_batch_no is not null then
-        delete from dpl_batch_tmp;
-        insert into dpl_batch_tmp (pk_1, pk_2, pk_3)
-        select distinct pk_1, pk_2, pk_3
-        from dpl_keys_tmp
-        where target_table = l_target
-          and data_segment = l_segment
-          and batch_no = l_batch_no
-          and batch_done = 0;
-        get diagnostics l_keys = row_count;
-
-        if l_keys > 0 then
-            raise notice 'next_batch: % | batch %/% reopened',
-                l_keys, l_batch_no, _batch_total();
-            return true;
-        end if;
-
-        update dpl_session_tmp set batch_no = null where id = 1;
+    if not l_open then
+        return false;
     end if;
 
     select min(batch_no)

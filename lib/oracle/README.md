@@ -94,6 +94,7 @@ begin
         );
 
     pkg_dpl.finalize;
+    commit;
 end;
 ```
 
@@ -190,15 +191,18 @@ begin
     end loop;
 
     pkg_dpl.finalize;
+    commit;
 end;
 ```
 
 A session with three sources is in `tests/oracle/demo/example_customer_metrics.sql`. The suite seeds a small source and runs that file. `tests/oracle/demo/seed_volume.sql` loads a large source and is not part of the default run.
 
-## Commits and resume
+## Commits
 
-When `p_commit` is true, which is the default, the captured keys are committed first and each `finish_batch` commits its own batch. A later call in the same session resumes at the unfinished batch.
+`prepare_batches` takes `p_commit_batch`, default true. When it is true, `finish_batch` commits that batch, and the target keeps those rows. `finalize` does not commit. The `commit` after `finalize` stores the watermark.
 
-The package keeps its position in the session, so a rollback does not forget which batch was open. After a rollback `dpl_batch_tmp` is empty, and the next `next_batch` returns that same batch.
+`p_commit_batch => false` leaves the whole run in one transaction. The caller commits once, after `finalize`.
 
-The `finish_batch` log line records `sql%rowcount` of the preceding statement, so call it immediately after the refresh statement.
+When a task fails, the session ends. The open batch rolls back. Batches that already reached `finish_batch` stay in the target, and the watermark stays where it was. The next task repeats `initialize`, `capture_delta`, and the batch loop.
+
+`finish_batch` records `sql%rowcount` of the preceding statement, so call it immediately after the refresh statement. Do not commit between `next_batch` and `finish_batch`: that commit empties `dpl_batch_tmp`.

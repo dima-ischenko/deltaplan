@@ -203,7 +203,9 @@ A session with three sources is in `tests/postgres/demo/example_customer_metrics
 
 The functions do not commit. `dpl_watermark` is created in the install schema. `initialize` creates the temporary tables for the session. If that transaction is rolled back, the temporary tables are dropped with it, and `initialize` must be called again.
 
-Commit after `prepare_batches` if a later rollback should keep the captured keys, and after each `finish_batch` if it should keep that batch. `next_batch`, the refresh statement, and `finish_batch` stay in one transaction: a commit empties `dpl_batch_tmp` before the statement can read it.
+Commit after each `finish_batch` to keep that batch in the target, and after `finalize` to store the watermark. Until that last commit the watermark does not move. A failed task is run again from `initialize`. The refresh statement has to be idempotent.
+
+`next_batch`, the refresh statement, and `finish_batch` stay in one transaction. A commit empties `dpl_batch_tmp`, so a commit between `next_batch` and the refresh statement drops the keys of the open batch.
 
 `finish_batch` takes an optional row count, `p_merged`, because it cannot see the caller's `ROW_COUNT`.
 

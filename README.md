@@ -55,6 +55,8 @@ Session tables take the suffix `_tmp`, the usual warehouse marker for a temporar
 
 The loop is then `next_batch`, the refresh statement against `dpl_batch_tmp`, and `finish_batch`. Call `finish_batch` immediately after that statement. `next_batch` returns false when no unfinished batch remains. Call `finalize` after the loop. It raises an error while a batch is unfinished, and that error does not roll the session back.
 
+A failed task leaves the watermark unchanged. The next task repeats `initialize`, capture, and the batch loop. The refresh statement has to be idempotent, because a batch that already committed is merged again.
+
 Commit behaviour differs by engine: [Oracle](lib/oracle/README.md), [PostgreSQL](lib/postgres/README.md).
 
 ## Data segments
@@ -101,7 +103,7 @@ If a removal must reach the target table, keep a row in the source: a deleted fl
 
 ## Tests
 
-Both suites copy the scripts into a database container. The host does not need `sqlplus` or `psql`. Helpers and one script per case live under `tests/oracle` and `tests/postgres`. They cover a static load, the lookback window, batches, a resume after rollback, the errors that keep a watermark in place, a capture-and-refresh at 1,000, 10,000, 100,000 and 1,000,000 keys, and the three-source demo. The passing lines are `pkg_dpl_test: passed`, `example_customer_metrics: passed` and `dpl_test: passed`.
+Both suites copy the scripts into a database container. The host does not need `sqlplus` or `psql`. Helpers and one script per case live under `tests/oracle` and `tests/postgres`. They cover a static load, the lookback window, batches, a full rerun after a failed batch, the errors that keep a watermark in place, a capture-and-refresh at 1,000, 10,000, 100,000 and 1,000,000 keys, and the three-source demo. The passing lines are `pkg_dpl_test: passed`, `example_customer_metrics: passed` and `dpl_test: passed`.
 
 ```bash
 docker compose -f tests/docker/docker-compose.yml up --wait

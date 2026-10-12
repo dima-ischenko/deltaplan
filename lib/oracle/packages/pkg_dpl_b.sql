@@ -5,9 +5,8 @@ create or replace package body pkg_dpl is
     gv_lookback_hours  number := 0;
     gv_batch_no        number;
     gv_batch_size      number;
-    gv_batch_commit    boolean := true;
+    gv_commit_batch    boolean := true;
     gv_batches_ready   boolean := false;
-    gv_keys_durable    boolean := false;
     gv_apply_open      boolean := false;
     gv_output_ready    boolean := false;
     gv_run_started     timestamp;
@@ -129,8 +128,6 @@ create or replace package body pkg_dpl is
         p_rows      number,
         p_error     varchar2
     ) is
-        l_left       number;
-        l_unassigned number;
     begin
         i_log(
             p_proc_name,
@@ -139,30 +136,37 @@ create or replace package body pkg_dpl is
         );
         rollback;
         gv_batch_no := null;
-
-        l_left := unfinished_batches;
-        l_unassigned := unassigned_keys;
-
-        if gv_keys_durable then
-            gv_batches_ready := true;
-            gv_apply_open := l_left > 0 or l_unassigned > 0;
-            if l_left = 0 and l_unassigned > 0 then
-                i_log(p_proc_name, l_unassigned, 'batch numbers were rolled back, call prepare_batches');
-            else
-                i_log(
-                    p_proc_name,
-                    l_left,
-                    'captured keys are committed, unfinished=' || l_left
-                    || ', call next_batch to resume'
-                );
-            end if;
-        else
-            gv_apply_open := false;
-            gv_batches_ready := false;
-            gv_batch_size := null;
-            i_log(p_proc_name, 0, 'rolled back, call initialize before the next run');
-        end if;
+        gv_batch_size := null;
+        gv_commit_batch := true;
+        gv_batches_ready := false;
+        gv_apply_open := false;
+        i_log(p_proc_name, 0, 'rolled back, call initialize before the next run');
     end note_failure;
+
+    procedure assert_no_open_batch is
+        l_open number := 0;
+    begin
+        if gv_batch_no is null then
+            return;
+        end if;
+
+        select count(*)
+        into l_open
+        from dpl_batch_tmp
+        where rownum = 1;
+
+        if l_open > 0 then
+            raise_application_error(
+                -20014,
+                'batch ' || gv_batch_no || ' is open; call finish_batch'
+            );
+        end if;
+
+        raise_application_error(
+            -20019,
+            'batch ' || gv_batch_no || ' lost its keys; call initialize'
+        );
+    end assert_no_open_batch;
 
     function get_target_table return varchar2 is
     begin
@@ -225,9 +229,8 @@ create or replace package body pkg_dpl is
         gv_lookback_hours := nvl(p_lookback_hours, 0);
         gv_batch_no := null;
         gv_batch_size := null;
-        gv_batch_commit := true;
+        gv_commit_batch := true;
         gv_batches_ready := false;
-        gv_keys_durable := false;
         gv_apply_open := false;
 
         delete from dpl_keys_tmp
@@ -256,9 +259,8 @@ create or replace package body pkg_dpl is
             gv_data_segment := null;
             gv_batch_no := null;
             gv_batch_size := null;
-            gv_batch_commit := true;
+            gv_commit_batch := true;
             gv_batches_ready := false;
-            gv_keys_durable := false;
             gv_apply_open := false;
             raise;
         end;
@@ -379,21 +381,20 @@ create or replace package body pkg_dpl is
     end capture_delta;
 
     procedure prepare_batches(
-        p_batch_size  number  default 5000,
-        p_commit      boolean default true
+        p_batch_size    number  default 5000,
+        p_commit_batch  boolean default true
     ) is
-        l_proc_name  varchar2(64) := get_proc_name('prepare_batches');
-        l_commit     boolean := true;
-        l_batch_size number := p_batch_size;
-        l_assigned   number := 0;
-        l_open       number := 0;
-        l_key_total  number := 0;
-        l_left       number := 0;
+        l_proc_name    varchar2(64) := get_proc_name('prepare_batches');
+        l_commit_batch boolean := true;
+        l_batch_size   number := p_batch_size;
+        l_assigned     number := 0;
+        l_key_total    number := 0;
+        l_left         number := 0;
     begin
         assert_ready;
 
-        if p_commit = false then
-            l_commit := false;
+        if p_commit_batch = false then
+            l_commit_batch := false;
         end if;
 
         if l_batch_size is null or l_batch_size < 1 or l_batch_size != trunc(l_batch_size) then
@@ -424,26 +425,14 @@ create or replace package body pkg_dpl is
             );
         end if;
 
-        if l_assigned > 0 and gv_batch_size is not null and l_commit != gv_batch_commit then
-            raise_application_error(-20018, 'p_commit cannot change while batches are in progress');
+        if l_assigned > 0 and gv_batch_size is not null and l_commit_batch != gv_commit_batch then
+            raise_application_error(-20018, 'p_commit_batch cannot change while batches are in progress');
         end if;
 
-        if gv_batch_no is not null then
-            select count(*)
-            into l_open
-            from dpl_batch_tmp
-            where rownum = 1;
-
-            if l_open > 0 then
-                raise_application_error(
-                    -20014,
-                    'batch ' || gv_batch_no || ' is open; call finish_batch'
-                );
-            end if;
-        end if;
+        assert_no_open_batch;
 
         gv_run_started := systimestamp;
-        gv_batch_commit := l_commit;
+        gv_commit_batch := l_commit_batch;
         gv_batches_ready := true;
         gv_batch_no := null;
 
@@ -460,14 +449,6 @@ create or replace package body pkg_dpl is
         gv_batch_size := l_batch_size;
 
         begin
-            -- Captured keys must survive a failed batch. Otherwise a retry
-            -- would rebuild the batch list from a temporary table that had been rolled back.
-            if l_commit then
-                commit;
-                gv_keys_durable := true;
-                i_log(l_proc_name, l_key_total, 'committed captured keys before batches');
-            end if;
-
             if l_assigned = 0 then
                 merge into dpl_keys_tmp t
                 using (
@@ -503,18 +484,14 @@ create or replace package body pkg_dpl is
                     sql%rowcount,
                     'assigned batch_no batch_size=' || l_batch_size
                     || ' distinct_pk=' || l_key_total
-                    || case when l_commit then ' commit' else ' no_commit' end
+                    || case when l_commit_batch then ' commit_batch' else ' no_commit' end
                 );
-
-                if l_commit then
-                    commit;
-                end if;
             else
                 i_log(
                     l_proc_name,
                     l_key_total,
-                    'resume batch_size=' || gv_batch_size
-                    || case when l_commit then ' commit' else ' no_commit' end
+                    'batch numbers already assigned batch_size=' || gv_batch_size
+                    || case when l_commit_batch then ' commit_batch' else ' no_commit' end
                 );
             end if;
 
@@ -551,7 +528,6 @@ create or replace package body pkg_dpl is
 
     function next_batch return boolean is
         l_proc_name varchar2(64) := get_proc_name('next_batch');
-        l_open      number := 0;
         l_keys      number := 0;
         l_next      number;
         l_total     number;
@@ -562,42 +538,13 @@ create or replace package body pkg_dpl is
             raise_application_error(-20016, 'Call prepare_batches first');
         end if;
 
-        if gv_batch_no is not null then
-            select count(*)
-            into l_open
-            from dpl_batch_tmp
-            where rownum = 1;
+        assert_no_open_batch;
 
-            if l_open > 0 then
-                raise_application_error(
-                    -20014,
-                    'batch ' || gv_batch_no || ' is open; call finish_batch'
-                );
-            end if;
-        end if;
-
-        if not gv_apply_open and gv_batch_no is null then
+        if not gv_apply_open then
             return false;
         end if;
 
         begin
-            if gv_batch_no is not null then
-                load_batch_keys(gv_batch_no, l_keys);
-
-                if l_keys > 0 then
-                    gv_batch_started := systimestamp;
-                    i_log(
-                        l_proc_name,
-                        l_keys,
-                        'batch ' || gv_batch_no || '/' || batch_total
-                        || ' keys=' || l_keys || ' reopened'
-                    );
-                    return true;
-                end if;
-
-                gv_batch_no := null;
-            end if;
-
             select min(batch_no)
             into l_next
             from dpl_keys_tmp
@@ -668,7 +615,7 @@ create or replace package body pkg_dpl is
 
             l_total := batch_total;
 
-            if gv_batch_commit then
+            if gv_commit_batch then
                 commit;
             else
                 delete from dpl_batch_tmp;
@@ -685,7 +632,7 @@ create or replace package body pkg_dpl is
                 l_merged,
                 'batch ' || l_batch_no || '/' || l_total
                 || ' merged=' || l_merged
-                || case when gv_batch_commit then ' committed' else ' uncommitted' end
+                || case when gv_commit_batch then ' committed' else ' uncommitted' end
                 || ' batch_s=' || fmt_num(round(seconds_since(gv_batch_started), 3))
                 || ' total_s=' || fmt_num(round(seconds_since(gv_run_started), 3))
             );
@@ -774,7 +721,7 @@ create or replace package body pkg_dpl is
                 -20005,
                 'unfinished batches for ' || gv_target_table
                 || ' (' || l_left || ' left). Watermark was not moved. '
-                || 'Call prepare_batches, then next_batch and finish_batch, to resume.'
+                || 'Finish the remaining batches before calling finalize.'
             );
         end if;
 

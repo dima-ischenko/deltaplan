@@ -44,7 +44,7 @@ begin
        or (l_open and l_all_pk > 0)
        or (l_ready and l_unassigned > 0) then
         raise exception
-            'DP-20005 unfinished batches for % (% left). Watermark was not moved. Call prepare_batches, then next_batch and finish_batch, to resume.',
+            'DP-20005 unfinished batches for % (% left). Watermark was not moved. Finish the remaining batches before calling finalize.',
             l_target, l_left;
     end if;
 

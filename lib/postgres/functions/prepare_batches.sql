@@ -1,10 +1,10 @@
 -- Batches are optional. Without them the refresh statement reads dpl_keys_tmp.
 -- With them: prepare_batches, then next_batch / SQL on dpl_batch_tmp / finish_batch.
--- This function does not commit. Commit after prepare_batches if a later
--- rollback should keep the captured keys, and after each finish_batch if
--- a later rollback should keep that batch. next_batch, the refresh statement
--- and finish_batch stay in one transaction: dpl_batch_tmp is
--- ON COMMIT DELETE ROWS.
+-- This function does not commit. Commit after each finish_batch to keep that
+-- batch in the target, and after finalize to store the watermark. A failed
+-- task repeats initialize, capture, and the batch loop. next_batch, the
+-- refresh statement, and finish_batch stay in one transaction: dpl_batch_tmp
+-- is ON COMMIT DELETE ROWS.
 create or replace function prepare_batches(
     p_batch_size  numeric default 5000
 )
@@ -50,6 +50,7 @@ begin
         if l_open_rows then
             raise exception 'DP-20014 batch % is open; call finish_batch', l_batch_no;
         end if;
+        raise exception 'DP-20019 batch % lost its keys; call initialize', l_batch_no;
     end if;
 
     select count(*)
@@ -104,7 +105,7 @@ begin
         raise notice 'prepare_batches: % | assigned batch_no batch_size=% distinct_pk=%',
             l_updated, p_batch_size, l_keys;
     else
-        raise notice 'prepare_batches: % | resume batch_size=%', l_keys, l_size;
+        raise notice 'prepare_batches: % | batch numbers already assigned batch_size=%', l_keys, l_size;
     end if;
 
     if _unfinished() = 0 then

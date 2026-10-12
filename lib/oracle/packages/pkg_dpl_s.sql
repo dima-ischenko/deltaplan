@@ -37,29 +37,32 @@ create or replace package pkg_dpl is
     -- With batches: prepare_batches, then the loop
     -- next_batch / SQL against dpl_batch_tmp / finish_batch.
     -- dpl_batch_tmp holds only the keys of the current batch.
-    -- When p_commit is true, the captured keys are committed first,
-    -- and each finish_batch commits its own batch.
-    -- A later call in the same session resumes at the unfinished batch.
-    -- finalize does not advance the watermark while such a batch remains.
+    -- When p_commit_batch is true, finish_batch commits that batch.
+    -- finalize does not commit and does not advance the watermark
+    -- while a batch is still unfinished. The caller commits after finalize.
+    -- A failed run is repeated from initialize. The refresh statement
+    -- has to be idempotent.
     procedure prepare_batches(
-        p_batch_size  number  default 5000,
-        p_commit      boolean default true
+        p_batch_size    number  default 5000,
+        p_commit_batch  boolean default true
     );
 
     -- Returns true when a batch is open and its keys are in dpl_batch_tmp.
     -- Returns false when no unfinished batch remains.
     -- Calling it again while the previous batch is still open and
     -- dpl_batch_tmp is not empty raises an error.
-    -- After rollback, dpl_batch_tmp is empty and the next call returns the same batch.
+    -- A commit or rollback that empties dpl_batch_tmp while a batch is open
+    -- raises an error. Call initialize and repeat the run.
     function next_batch return boolean;
 
     -- Marks the open batch complete.
-    -- Commits when prepare_batches was called with p_commit true.
+    -- Commits when prepare_batches was called with p_commit_batch true.
     -- The log line records sql%rowcount of the preceding DML, so call this immediately after it.
     procedure finish_batch;
 
     -- Advances dpl_watermark from dpl_keys_tmp and clears the session.
-    -- Refuses while a batch is still unfinished, and does not roll that error back.
+    -- Does not commit. Refuses while a batch is still unfinished,
+    -- and does not roll that error back.
     procedure finalize;
 
 end pkg_dpl;

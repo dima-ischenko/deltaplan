@@ -3,7 +3,7 @@ begin
     pkg_dpl_test.add_row('inc_test_a', 'a', 1, pkg_dpl_test.c_t1);
     pkg_dpl_test.add_row('inc_test_a', 'b', 2, pkg_dpl_test.c_t1);
     pkg_dpl_test.capture_source('inc_test_a');
-    pkg_dpl.prepare_batches(p_batch_size => 1, p_commit => false);
+    pkg_dpl.prepare_batches(p_batch_size => 1, p_commit_batch => false);
 
     while pkg_dpl.next_batch loop
         pkg_dpl_test.merge_batch;

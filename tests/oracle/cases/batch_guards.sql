@@ -79,7 +79,7 @@ begin
     end;
 
     begin
-        pkg_dpl.prepare_batches(p_batch_size => 2, p_commit => false);
+        pkg_dpl.prepare_batches(p_batch_size => 2, p_commit_batch => false);
         pkg_dpl_test.expect_error('guard commit', -20018);
     exception
         when others then
