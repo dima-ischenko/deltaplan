@@ -31,6 +31,16 @@ begin
     where name in ('PKG_DPL', 'PKG_DPL_TEST');
 
     if l_errors > 0 then
+        for r in (
+            select name, line, position, text
+            from user_errors
+            where name in ('PKG_DPL', 'PKG_DPL_TEST')
+            order by name, sequence
+        ) loop
+            dbms_output.put_line(
+                r.name || ' ' || r.line || '/' || r.position || ': ' || r.text
+            );
+        end loop;
         raise_application_error(-20000, 'dpl did not compile, errors=' || l_errors);
     end if;
 end;

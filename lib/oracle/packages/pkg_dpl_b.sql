@@ -91,8 +91,8 @@ create or replace package body pkg_dpl is
         execute immediate
             'select count(*) from (select s.' || p_col
             || ' from (' || p_sql || ') s where 1 = 0)'
-            using p_bound
-            into l_n;
+            into l_n
+            using p_bound;
         return true;
     exception
         when others then
