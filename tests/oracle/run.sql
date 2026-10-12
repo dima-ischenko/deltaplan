@@ -9,15 +9,8 @@ set verify off
 
 begin execute immediate 'drop package pkg_dpl_test'; exception when others then if sqlcode != -4043 then raise; end if; end;
 /
-@@../../lib/oracle/rollback_code.sql
-@@../../lib/oracle/rollback_structure.sql
-@@../../lib/oracle/ddl_dml/dpl_watermark.sql
-@@../../lib/oracle/ddl_dml/dpl_keys_tmp.sql
-@@../../lib/oracle/ddl_dml/dpl_batch_tmp.sql
-@@../../lib/oracle/packages/pkg_dpl_s.sql
-/
-@@../../lib/oracle/packages/pkg_dpl_b.sql
-/
+@@../../lib/oracle/rollback.sql
+@@../../lib/oracle/deploy.sql
 
 @@helpers/tables.sql
 @@helpers/pkg_dpl_test.sql

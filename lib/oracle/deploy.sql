@@ -1,7 +1,9 @@
 -- Deploy dpl into the current schema.
 -- The calculating user must own these objects: the key tables are
 -- global temporary tables, and the package keeps its state in the session.
--- SQL*Plus resolves @@ against the working directory, so run this from lib/oracle/.
+-- From the command line, start this file from lib/oracle/ (@ is the working
+-- directory). Nested @@ paths are resolved next to each script, so this file
+-- can also be called with @@ from tests/oracle/run.sql.
 
 whenever sqlerror exit sql.sqlcode
 
