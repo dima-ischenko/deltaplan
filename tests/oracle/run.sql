@@ -1,4 +1,4 @@
--- Rebuild dpl in the current schema and run the checks.
+-- Run the checks. tests/oracle/run.sh deploys pkg_dpl first from lib/oracle.
 -- sqlplus user/password@//host:1521/service @tests/oracle/run.sql
 
 whenever sqlerror exit sql.sqlcode
@@ -9,8 +9,6 @@ set verify off
 
 begin execute immediate 'drop package pkg_dpl_test'; exception when others then if sqlcode != -4043 then raise; end if; end;
 /
-@@../../lib/oracle/rollback.sql
-@@../../lib/oracle/deploy.sql
 
 @@helpers/tables.sql
 @@helpers/pkg_dpl_test.sql

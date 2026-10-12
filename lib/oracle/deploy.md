@@ -18,6 +18,6 @@ How to call the package after deploy: [README.md](README.md).
 
 ## Layout
 
-Tables live in `ddl_dml/`, the package in `packages/`, as in `rpd_data/lib` and `dwh_ato/lib`. After deploy, the playground is [`demo/oracle`](../../demo/README.md). Start `@deploy.sql` from `lib/oracle/`: a single `@` is the working directory. Nested `@@` paths are resolved next to each script, so `tests/oracle/run.sql` can call the same deploy files.
+Tables live in `ddl_dml/`, the package in `packages/`, as in `rpd_data/lib` and `dwh_ato/lib`. After deploy, the playground is [`demo/oracle`](../../demo/README.md). Start `@deploy.sql` from `lib/oracle/`. `@@ddl_dml/file.sql` is resolved from the working directory, so the suite runs rollback and deploy from that directory before the checks.
 
 The calculating user must own the objects: the key tables are global temporary tables, and the package keeps its state in the session.
