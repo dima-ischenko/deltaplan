@@ -36,7 +36,7 @@ commit;
 @demo/oracle/check.sql
 ```
 
-Defaults are at the top of `seed_volume.sql` and `seed_delta.sql`. Run `seed_delta.sql` again to plant another slice.
+Defaults are at the top of `seed_volume.sql` and `seed_delta.sql` (`c_delta_mode`: `update`, `insert`, or `mix`). Run `seed_delta.sql` again to plant another slice.
 
 Docker stack from `tests/docker/docker-compose.yml`:
 

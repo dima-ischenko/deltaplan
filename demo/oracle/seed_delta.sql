@@ -1,7 +1,7 @@
 -- Delta on top of seed_volume.sql. Does not truncate or reload the base.
 --
--- Default: 7% of the customers already loaded. Half of that slice is updated,
--- half is inserted as new customers with the same orders-per-customer shape.
+-- Default: 7% of the customers already loaded. c_delta_mode is update
+-- (only updates), insert (only new customers), or mix (half of each).
 -- Run it again to plant another slice. The watermark is left where seed_volume
 -- or the last run.sql put it, so the next run.sql captures every source row
 -- whose updated_at is still above that watermark.
@@ -11,7 +11,11 @@ set timing on
 
 declare
     c_delta_pct   constant number := 7;
+    -- update | insert | mix
+    c_delta_mode  constant varchar2(10) := 'update';
     c_order_chunk constant number := 50000;
+
+    l_mode             varchar2(10);
 
     l_started          timestamp := systimestamp;
     l_customers        number;
@@ -49,6 +53,11 @@ declare
         );
     end i_log;
 begin
+    l_mode := lower(trim(c_delta_mode));
+    if l_mode not in ('update', 'insert', 'mix') then
+        raise_application_error(-20021, 'c_delta_mode must be update, insert, or mix');
+    end if;
+
     if c_delta_pct <= 0 or c_delta_pct != trunc(c_delta_pct) then
         raise_application_error(-20021, 'c_delta_pct must be a positive integer');
     end if;
@@ -68,10 +77,18 @@ begin
     l_per_cust := l_orders / l_customers;
     l_items_per_order := l_items / l_orders;
     l_touch := round(l_customers * c_delta_pct / 100);
-    l_upd := trunc(l_touch / 2);
-    l_new := l_touch - l_upd;
+    if l_mode = 'update' then
+        l_upd := l_touch;
+        l_new := 0;
+    elsif l_mode = 'insert' then
+        l_upd := 0;
+        l_new := l_touch;
+    else
+        l_upd := trunc(l_touch / 2);
+        l_new := l_touch - l_upd;
+    end if;
 
-    if l_upd < 1 or l_new < 1 then
+    if l_touch < 1 or (l_mode = 'mix' and (l_upd < 1 or l_new < 1)) then
         raise_application_error(-20021, 'delta is too small; load more customers or raise c_delta_pct');
     end if;
 
@@ -108,96 +125,102 @@ begin
     select max(id) into l_max_order from orders;
 
     l_upd_at := l_as_of;
-    -- Simulated 2s gap between the update slice and the insert slice.
-    l_as_of := l_as_of + 2 / 86400;
+    if l_upd > 0 and l_new > 0 then
+        l_as_of := l_as_of + 2 / 86400;
+    end if;
 
-    update customers
-    set name = name || '-u',
-        updated_at = l_upd_at
-    where id <= l_upd;
+    if l_upd > 0 then
+        update customers
+        set name = name || '-u',
+            updated_at = l_upd_at
+        where id <= l_upd;
 
-    update orders
-    set status = case status
-                     when 'completed' then 'cancelled'
-                     when 'cancelled' then 'completed'
-                     else 'completed'
-                 end,
-        order_discount = least(order_discount + 0.05, 0.5),
-        updated_at = l_upd_at
-    where customer_id <= l_upd;
+        update orders
+        set status = case status
+                         when 'completed' then 'cancelled'
+                         when 'cancelled' then 'completed'
+                         else 'completed'
+                     end,
+            order_discount = least(order_discount + 0.05, 0.5),
+            updated_at = l_upd_at
+        where customer_id <= l_upd;
 
-    update order_items
-    set price = round(price + 1, 2),
-        updated_at = l_upd_at
-    where order_id <= l_upd * l_per_cust;
+        update order_items
+        set price = round(price + 1, 2),
+            updated_at = l_upd_at
+        where order_id <= l_upd * l_per_cust;
+    end if;
 
-    insert into customers (id, name, region, updated_at)
-    select l_max_customer + n,
-           'customer-' || (l_max_customer + n),
-           case mod(n, 4)
-               when 0 then 'north'
-               when 1 then 'south'
-               when 2 then 'east'
-               else 'west'
-           end,
-           l_as_of
-    from (
-        select level as n
-        from dual
-        connect by level <= l_new
-    );
-
-    l_from := 1;
-    while l_from <= l_new * l_per_cust loop
-        l_chunk := least(c_order_chunk, l_new * l_per_cust - l_from + 1);
-
-        insert into orders (id, customer_id, order_date, status, order_discount, updated_at)
-        select l_max_order + l_from + level - 1,
-               l_max_customer + trunc((l_from + level - 2) / l_per_cust) + 1,
-               trunc(l_as_of) - mod(level, 30),
-               case mod(level, 5)
-                   when 0 then 'new'
-                   when 1 then 'cancelled'
-                   else 'completed'
+    if l_new > 0 then
+        insert into customers (id, name, region, updated_at)
+        select l_max_customer + n,
+               'customer-' || (l_max_customer + n),
+               case mod(n, 4)
+                   when 0 then 'north'
+                   when 1 then 'south'
+                   when 2 then 'east'
+                   else 'west'
                end,
-               case when mod(level, 10) = 0 then 0.1 else 0 end,
-               l_as_of
-        from dual
-        connect by level <= l_chunk;
-
-        commit;
-        l_from := l_from + l_chunk;
-    end loop;
-
-    l_from := 1;
-    while l_from <= l_new * l_per_cust loop
-        l_chunk := least(c_order_chunk, l_new * l_per_cust - l_from + 1);
-
-        insert into order_items (order_id, product_id, quantity, price, updated_at)
-        select o.order_id,
-               p.product_id,
-               1 + mod(o.order_id + p.product_id, 5),
-               round(50 + mod(o.order_id * 7 + p.product_id * 11, 50000) / 100, 2),
                l_as_of
         from (
-            select l_max_order + l_from + level - 1 as order_id
+            select level as n
             from dual
-            connect by level <= l_chunk
-        ) o
-        cross join (
-            select level as product_id
-            from dual
-            connect by level <= l_items_per_order
-        ) p;
+            connect by level <= l_new
+        );
 
-        commit;
-        l_from := l_from + l_chunk;
-    end loop;
+        l_from := 1;
+        while l_from <= l_new * l_per_cust loop
+            l_chunk := least(c_order_chunk, l_new * l_per_cust - l_from + 1);
+
+            insert into orders (id, customer_id, order_date, status, order_discount, updated_at)
+            select l_max_order + l_from + level - 1,
+                   l_max_customer + trunc((l_from + level - 2) / l_per_cust) + 1,
+                   trunc(l_as_of) - mod(level, 30),
+                   case mod(level, 5)
+                       when 0 then 'new'
+                       when 1 then 'cancelled'
+                       else 'completed'
+                   end,
+                   case when mod(level, 10) = 0 then 0.1 else 0 end,
+                   l_as_of
+            from dual
+            connect by level <= l_chunk;
+
+            commit;
+            l_from := l_from + l_chunk;
+        end loop;
+
+        l_from := 1;
+        while l_from <= l_new * l_per_cust loop
+            l_chunk := least(c_order_chunk, l_new * l_per_cust - l_from + 1);
+
+            insert into order_items (order_id, product_id, quantity, price, updated_at)
+            select o.order_id,
+                   p.product_id,
+                   1 + mod(o.order_id + p.product_id, 5),
+                   round(50 + mod(o.order_id * 7 + p.product_id * 11, 50000) / 100, 2),
+                   l_as_of
+            from (
+                select l_max_order + l_from + level - 1 as order_id
+                from dual
+                connect by level <= l_chunk
+            ) o
+            cross join (
+                select level as product_id
+                from dual
+                connect by level <= l_items_per_order
+            ) p;
+
+            commit;
+            l_from := l_from + l_chunk;
+        end loop;
+    end if;
 
     commit;
 
     i_log(
-        'updated_customers=' || l_upd
+        'mode=' || l_mode
+        || ' updated_customers=' || l_upd
         || ' new_customers=' || l_new
         || ' updated_at=' || to_char(l_upd_at, 'yyyy-mm-dd hh24:mi:ss')
         || ' inserted_at=' || to_char(l_as_of, 'yyyy-mm-dd hh24:mi:ss')

@@ -11,7 +11,7 @@ Try it from [`demo/`](demo/README.md).
 
 On Oracle the entry point is `pkg_dpl`. On PostgreSQL the same names are functions in the install schema (`perform` from PL/pgSQL).
 
-A run is `initialize` → `capture_delta` per source → refresh SQL → `finalize`. Batches are optional: `prepare_batches`, then `next_batch` / refresh / `finish_batch`.
+A run is `initialize` -> `capture_delta` per source -> refresh SQL -> `finalize`. Batches are optional: `prepare_batches`, then `next_batch` / refresh / `finish_batch`.
 
 ### initialize(p_target_table, p_data_segment, p_lookback_hours)
 
@@ -44,7 +44,7 @@ Numbers distinct keys. Skip it to refresh every key from `dpl_keys_tmp` in one s
 | `p_batch_size` | no | `5000` | Distinct keys per batch. |
 | `p_commit_batch` | no | `true` | Oracle only. When true, `finish_batch` commits that batch. PostgreSQL never commits; commit after `finish_batch` yourself. |
 
-### next_batch() → boolean
+### next_batch() -> boolean
 
 Loads the next unfinished batch into `dpl_batch_tmp`. Returns true while a batch is open, false when none remain. Do not commit between `next_batch` and `finish_batch`: that empties `dpl_batch_tmp`.
 
