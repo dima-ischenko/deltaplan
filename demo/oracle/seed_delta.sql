@@ -2,9 +2,9 @@
 --
 -- Default: 7% of the customers already loaded. c_delta_mode is update
 -- (only updates), insert (only new customers), or mix (half of each).
--- Run it again to plant another slice. The watermark is left where seed_volume
--- or the last run.sql put it, so the next run.sql captures every source row
--- whose updated_at is still above that watermark.
+-- Run it again to plant another slice. This script does not touch
+-- dpl_watermark. If run.sql has already stored one, planted rows get a
+-- timestamp after it so the next run.sql captures them.
 
 set serveroutput on size unlimited
 set timing on
@@ -26,7 +26,6 @@ declare
     l_touch            number;
     l_upd              number;
     l_new              number;
-    l_wm_cnt           number;
     l_wm               date;
     l_max_updated      date;
     l_as_of            date;
@@ -92,19 +91,12 @@ begin
         raise_application_error(-20021, 'delta is too small; load more customers or raise c_delta_pct');
     end if;
 
-    select count(*), max(watermark)
-    into l_wm_cnt, l_wm
+    select max(watermark)
+    into l_wm
     from dpl_watermark
     where target_table = 'customer_metrics'
       and data_segment = 'all'
       and source_table in ('customers', 'orders', 'order_items');
-
-    if l_wm_cnt != 3 then
-        raise_application_error(
-            -20024,
-            'customer_metrics watermarks=' || l_wm_cnt || '; run seed_volume.sql first'
-        );
-    end if;
 
     select max(updated_at)
     into l_max_updated
@@ -117,8 +109,11 @@ begin
     );
 
     l_as_of := sysdate;
-    if l_as_of <= l_wm or l_as_of <= l_max_updated then
-        l_as_of := greatest(l_wm, l_max_updated) + 1 / 86400;
+    if l_wm is not null and l_as_of <= l_wm then
+        l_as_of := l_wm + 1 / 86400;
+    end if;
+    if l_as_of <= l_max_updated then
+        l_as_of := l_max_updated + 1 / 86400;
     end if;
 
     select max(id) into l_max_customer from customers;

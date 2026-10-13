@@ -3,9 +3,9 @@
 -- Default: 100,000 customers, 1,000,000 orders, 30 items each.
 -- Smaller smoke: 1000 / 10000 / 30.
 --
--- Source rows keep the base timestamp. The watermark is the load time, which
--- is later than every base row, so the two-hour lookback in run.sql does not
--- recapture them. Plant the delta with seed_delta.sql.
+-- Source rows keep a fixed base timestamp. This script does not touch
+-- dpl_watermark; run.sql writes it after computing customer_metrics.
+-- Plant a later slice with seed_delta.sql.
 
 set serveroutput on size unlimited
 set timing on
@@ -19,7 +19,6 @@ declare
 
     l_started   timestamp := systimestamp;
     l_per_cust  number;
-    l_loaded    date;
     l_from      number;
     l_chunk     number;
     l_rows      number;
@@ -179,22 +178,9 @@ begin
     execute immediate 'alter table orders logging';
     execute immediate 'alter table order_items logging';
 
-    l_loaded := sysdate;
-
-    delete from dpl_watermark
-    where target_table = 'customer_metrics'
-      and data_segment = 'all';
-
-    insert into dpl_watermark (target_table, data_segment, source_table, watermark, updated_at)
-    select 'customer_metrics', 'all', column_value, l_loaded, l_loaded
-    from table(sys.odcivarchar2list('customers', 'orders', 'order_items'));
-
-    commit;
-
     i_log(
-        'watermark=' || to_char(l_loaded, 'yyyy-mm-dd hh24:mi:ss')
-        || ' base=' || to_char(c_base_updated_at, 'yyyy-mm-dd hh24:mi:ss'),
-        3
+        'base=' || to_char(c_base_updated_at, 'yyyy-mm-dd hh24:mi:ss'),
+        c_orders * c_items_per_order
     );
 
     i_log('done loading, restoring indexes', c_orders * c_items_per_order);
@@ -208,7 +194,7 @@ begin
     dbms_stats.gather_table_stats(user, 'ORDERS', estimate_percent => 1, cascade => true);
     dbms_stats.gather_table_stats(user, 'ORDER_ITEMS', estimate_percent => 1, cascade => true);
     dbms_stats.gather_table_stats(user, 'CUSTOMER_METRICS', estimate_percent => 100, cascade => true);
-    dbms_output.put_line(to_char(systimestamp, 'hh24:mi:ss.ff3') || ' seed_volume: stats gathered, next: @demo/oracle/seed_delta.sql');
+    dbms_output.put_line(to_char(systimestamp, 'hh24:mi:ss.ff3') || ' seed_volume: stats gathered, next: @demo/oracle/run.sql');
 exception
     when others then
         dbms_output.put_line(to_char(systimestamp, 'hh24:mi:ss.ff3') || ' seed_volume: stats skipped ' || sqlerrm);

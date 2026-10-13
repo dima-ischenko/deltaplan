@@ -34,6 +34,9 @@ do $$ begin raise notice 'dpl_test: passed'; end; $$;
 \i tests/postgres/cases/metrics_same_result.sql
 \i tests/postgres/cases/metrics_silent_dml.sql
 
+delete from dpl_watermark
+where target_table = 'customer_metrics';
+
 \i demo/postgres/tables.sql
 \i demo/postgres/seed.sql
 \i demo/postgres/run.sql

@@ -4,16 +4,6 @@ truncate table orders;
 truncate table customers;
 truncate table customer_metrics;
 
-do $seed$
-begin
-    delete from dpl_watermark
-    where target_table = 'customer_metrics';
-exception
-    when undefined_table then
-        null;
-end;
-$seed$;
-
 insert into customers (id, name, region, updated_at) values
     (1, 'anna', 'north', timestamp '2024-01-15 10:00:00'),
     (2, 'ben', 'south', timestamp '2024-01-15 10:00:00'),

@@ -58,6 +58,9 @@ end;
 @tests/oracle/cases/metrics_same_result.sql
 @tests/oracle/cases/metrics_silent_dml.sql
 
+delete from dpl_watermark
+where target_table = 'customer_metrics';
+
 @demo/oracle/tables.sql
 @demo/oracle/seed.sql
 @demo/oracle/run.sql

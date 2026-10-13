@@ -4,19 +4,6 @@ truncate table orders;
 truncate table customers;
 truncate table customer_metrics;
 
-begin
-    execute immediate q'[
-        delete from dpl_watermark
-        where target_table = 'customer_metrics'
-    ]';
-exception
-    when others then
-        if sqlcode != -942 then
-            raise;
-        end if;
-end;
-/
-
 insert into customers (id, name, region, updated_at) values
     (1, 'anna', 'north', timestamp '2024-01-15 10:00:00');
 insert into customers (id, name, region, updated_at) values

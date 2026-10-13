@@ -3,9 +3,9 @@
 -- Default: 100,000 customers, 1,000,000 orders, 30 items each.
 -- Smaller smoke: 1000 / 10000 / 30.
 --
--- Source rows keep the base timestamp. The watermark is the load time, which
--- is later than every base row, so the two-hour lookback in run.sql does not
--- recapture them. Plant the delta with seed_delta.sql.
+-- Source rows keep a fixed base timestamp. This script does not touch
+-- dpl_watermark; run.sql writes it after computing customer_metrics.
+-- Plant a later slice with seed_delta.sql.
 
 \timing on
 \set ON_ERROR_STOP on
@@ -30,7 +30,6 @@ declare
 
     l_started   timestamptz := clock_timestamp();
     l_per_cust  integer;
-    l_loaded    timestamp;
     l_from      integer;
     l_chunk     integer;
     l_rows      integer;
@@ -109,21 +108,9 @@ begin
         l_from := l_from + l_chunk;
     end loop;
 
-    l_loaded := clock_timestamp();
-
-    delete from dpl_watermark
-    where target_table = 'customer_metrics'
-      and data_segment = 'all';
-
-    insert into dpl_watermark (target_table, data_segment, source_table, watermark, updated_at)
-    values
-        ('customer_metrics', 'all', 'customers', l_loaded, l_loaded),
-        ('customer_metrics', 'all', 'orders', l_loaded, l_loaded),
-        ('customer_metrics', 'all', 'order_items', l_loaded, l_loaded);
-
     l_elapsed := round(extract(epoch from clock_timestamp() - l_started)::numeric, 1);
-    raise notice 'seed_volume: % | watermark=% base=% %s',
-        rpad('3', 16), l_loaded, c_base_updated_at, l_elapsed;
+    raise notice 'seed_volume: % | base=% %s',
+        rpad((c_orders * c_items_per_order)::text, 16), c_base_updated_at, l_elapsed;
     raise notice 'seed_volume: % | done, restoring indexes %s',
         rpad((c_orders * c_items_per_order)::text, 16), l_elapsed;
 end;

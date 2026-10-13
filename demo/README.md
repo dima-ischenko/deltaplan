@@ -2,7 +2,7 @@
 
 Scripts that load `customer_metrics` from three sources. Deploy first: [Oracle](../lib/oracle/deploy.md) or [PostgreSQL](../lib/postgres/deploy.md).
 
-`run.sql` is the incremental load. Start from the repository root.
+`run.sql` is the incremental load. Seed scripts load source rows only; `run.sql` writes `dpl_watermark` after it computes `customer_metrics`. Start from the repository root.
 
 ## Oracle
 
@@ -31,6 +31,7 @@ commit;
 ```sql
 @demo/oracle/tables.sql
 @demo/oracle/seed_volume.sql
+@demo/oracle/run.sql
 @demo/oracle/seed_delta.sql
 @demo/oracle/run.sql
 @demo/oracle/check.sql
@@ -73,6 +74,7 @@ update orders set updated_at = clock_timestamp() where id = 101;
 ```sql
 \i demo/postgres/tables.sql
 \i demo/postgres/seed_volume.sql
+\i demo/postgres/run.sql
 \i demo/postgres/seed_delta.sql
 \i demo/postgres/run.sql
 \i demo/postgres/check.sql
