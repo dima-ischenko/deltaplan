@@ -9,9 +9,7 @@ declare
     l_left       integer;
     l_unassigned integer;
     l_sources    integer := 0;
-    r            record;
-    l_old        timestamp;
-    l_effective  timestamp;
+    l_moved      integer := 0;
 begin
     if to_regclass('dpl_session_tmp') is null then
         raise exception 'DP-20001 Call initialize first';
@@ -36,48 +34,39 @@ begin
             l_target, l_left;
     end if;
 
-    for r in
-        select s.source_table, s.watermark
-        from (
-            select source_table, max(watermark) as watermark
-            from dpl_keys_tmp
-            group by source_table
-        ) s
-        order by s.source_table
-    loop
-        select watermark
-        into l_old
-        from dpl_watermark
-        where target_table = l_target
-          and data_segment = l_segment
-          and source_table = r.source_table;
+    select count(*)
+    into l_sources
+    from (
+        select source_table
+        from dpl_keys_tmp
+        group by source_table
+    ) s;
 
-        if not found or r.watermark > l_old then
-            l_effective := r.watermark;
-        else
-            l_effective := l_old;
-        end if;
-
-        insert into dpl_watermark (target_table, data_segment, source_table, watermark, updated_at)
-        values (l_target, l_segment, r.source_table, l_effective, clock_timestamp()::timestamp)
+    if l_sources = 0 then
+        perform _log('finalize', 0, 'no delta, watermarks unchanged');
+    else
+        insert into dpl_watermark (
+            target_table, data_segment, source_table, watermark, updated_at
+        )
+        select l_target,
+               l_segment,
+               source_table,
+               max(watermark),
+               clock_timestamp()::timestamp
+        from dpl_keys_tmp
+        group by source_table
         on conflict (target_table, data_segment, source_table) do update
             set watermark = excluded.watermark,
                 updated_at = excluded.updated_at
             where dpl_watermark.watermark < excluded.watermark;
 
-        l_sources := l_sources + 1;
+        get diagnostics l_moved = row_count;
+
         perform _log(
             'finalize',
-            0,
-            format(
-                'source=%s stored=%s captured=%s effective=%s',
-                r.source_table, l_old, r.watermark, l_effective
-            )
+            l_sources,
+            format('sources=%s moved=%s', l_sources, l_moved)
         );
-    end loop;
-
-    if l_sources = 0 then
-        perform _log('finalize', 0, 'no delta, watermarks unchanged');
     end if;
 
     delete from dpl_batch_tmp;

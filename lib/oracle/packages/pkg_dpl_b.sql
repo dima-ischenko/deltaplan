@@ -17,7 +17,6 @@ create or replace package body pkg_dpl is
     c_w_date   constant pls_integer := 32;
     c_w_batch  constant pls_integer := 18;
     c_w_seg    constant pls_integer := 16;
-    c_w_effect constant pls_integer := 12;
 
     function get_proc_name(p_proc_name varchar2) return varchar2 is
     begin
@@ -687,58 +686,14 @@ create or replace package body pkg_dpl is
         end;
     end finish_batch;
 
-    procedure store_watermark(
-        p_source_table varchar2,
-        p_effective    date,
-        p_moved        out number
-    ) is
-    begin
-        merge into dpl_watermark t
-        using (
-            select gv_target_table as target_table,
-                   gv_data_segment as data_segment,
-                   p_source_table  as source_table,
-                   p_effective     as watermark
-            from dual
-        ) s
-        on (t.target_table = s.target_table
-            and t.data_segment = s.data_segment
-            and t.source_table = s.source_table)
-        when matched then
-            update set t.watermark = s.watermark,
-                       t.updated_at = sysdate
-            where t.watermark < s.watermark
-        when not matched then
-            insert (target_table, data_segment, source_table, watermark, updated_at)
-            values (s.target_table, s.data_segment, s.source_table, s.watermark, sysdate);
-
-        p_moved := sql%rowcount;
-    exception
-        when dup_val_on_index then
-            update dpl_watermark
-            set watermark = p_effective,
-                updated_at = sysdate
-            where target_table = gv_target_table
-              and data_segment = gv_data_segment
-              and source_table = p_source_table
-              and watermark < p_effective;
-
-            p_moved := sql%rowcount;
-    end store_watermark;
-
     procedure finalize is
-        l_proc_name varchar2(64) := get_proc_name('finalize');
-        l_started   timestamp := systimestamp;
-        l_all_pk    number := 0;
-        l_sources   number := 0;
+        l_proc_name  varchar2(64) := get_proc_name('finalize');
+        l_started    timestamp := systimestamp;
+        l_all_pk     number := 0;
+        l_sources    number := 0;
         l_left       number := 0;
         l_unassigned number := 0;
-        l_old        date;
-        l_effective date;
-        l_moved     number := 0;
-        l_effect    varchar2(16);
-        l_src_rows  number;
-        l_pk_rows   number;
+        l_moved      number := 0;
     begin
         assert_ready;
 
@@ -774,85 +729,45 @@ create or replace package body pkg_dpl is
             );
         end if;
 
-        for ir in (
-            select source_table,
-                   max(watermark) watermark
+        select count(*)
+        into l_sources
+        from (
+            select source_table
             from dpl_keys_tmp
             group by source_table
-            order by source_table
-        ) loop
-            l_sources := l_sources + 1;
-
-            begin
-                select watermark
-                into l_old
-                from dpl_watermark
-                where target_table = gv_target_table
-                  and data_segment = gv_data_segment
-                  and source_table = ir.source_table;
-            exception
-                when no_data_found then
-                    l_old := null;
-            end;
-
-            if l_old is null or ir.watermark > l_old then
-                l_effective := ir.watermark;
-            else
-                l_effective := l_old;
-            end if;
-
-            if l_old is null then
-                l_effect := 'inserted';
-            elsif ir.watermark > l_old then
-                l_effect := 'advanced';
-            elsif ir.watermark < l_old then
-                l_effect := 'kept';
-            else
-                l_effect := 'unchanged';
-            end if;
-
-            store_watermark(ir.source_table, l_effective, l_moved);
-
-            if gv_debug then
-                select nvl(sum(cnt), 0),
-                       count(*)
-                into l_src_rows, l_pk_rows
-                from (
-                    select count(*) cnt
-                    from dpl_keys_tmp
-                    where source_table = ir.source_table
-                    group by pk_1, pk_2, pk_3
-                );
-            end if;
-
-            i_log(
-                l_proc_name,
-                nvl(l_pk_rows, 0),
-                fmt_col('source=' || ir.source_table, c_w_name)
-                || fmt_col('stored=' || fmt_date(l_old), c_w_date)
-                || fmt_col('captured=' || fmt_date(ir.watermark), c_w_date)
-                || fmt_col('effective=' || fmt_date(l_effective), c_w_date)
-                || fmt_col(l_effect, c_w_effect)
-                || 'moved=' || l_moved
-                || case
-                       when gv_debug then
-                           ' rows=' || l_src_rows
-                           || ' pk=' || l_pk_rows
-                           || ' all_pk=' || l_all_pk
-                       else
-                           null
-                   end
-            );
-        end loop;
+        );
 
         if l_sources = 0 then
             i_log(l_proc_name, 0, 'no delta, watermarks unchanged');
+        else
+            merge into dpl_watermark t
+            using (
+                select gv_target_table as target_table,
+                       gv_data_segment as data_segment,
+                       source_table,
+                       max(watermark) as watermark
+                from dpl_keys_tmp
+                group by source_table
+            ) s
+            on (t.target_table = s.target_table
+                and t.data_segment = s.data_segment
+                and t.source_table = s.source_table)
+            when matched then
+                update set t.watermark = s.watermark,
+                           t.updated_at = sysdate
+                where t.watermark < s.watermark
+            when not matched then
+                insert (target_table, data_segment, source_table, watermark, updated_at)
+                values (s.target_table, s.data_segment, s.source_table, s.watermark, sysdate);
+
+            l_moved := sql%rowcount;
         end if;
 
         i_log(
             l_proc_name,
             l_sources,
             'sources=' || l_sources
+            || ' moved=' || l_moved
             || case when gv_debug then ' distinct_pk=' || l_all_pk else null end
             || ' ' || fmt_num(round(seconds_since(l_started), 3)) || 's'
         );
