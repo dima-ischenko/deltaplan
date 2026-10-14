@@ -11,20 +11,29 @@
 -- Their names match the Oracle installation, so the refresh statement can
 -- read them unqualified.
 -- dpl_watermark is permanent and holds the watermark.
+-- dpl_log is permanent. set_log_table writes to it; it stays empty by default.
 -- Column order matches the Oracle tables. See lib/oracle/ddl_dml/dpl_keys_tmp.sql.
 --
--- PostgreSQL keeps session flags in dpl_session_tmp, also temporary.
+-- PostgreSQL keeps session flags, including target and segment, in
+-- dpl_session_tmp, also temporary. dpl_keys_tmp does not repeat those columns.
 -- If the transaction that called initialize is rolled back, the temporary
 -- tables go with it. Call initialize again.
 
 -- Older installs used procedures, and a few signatures have changed.
 -- DROP PROCEDURE on a function of the same name raises, so drop the functions first.
 drop function if exists :"dpl_schema".finalize();
+drop function if exists :"dpl_schema".set_log_table(boolean);
+drop function if exists :"dpl_schema".set_debug(boolean);
+drop function if exists :"dpl_schema".get_log_table();
+drop function if exists :"dpl_schema".get_debug();
+drop function if exists :"dpl_schema"._log(text, numeric, text);
+drop function if exists :"dpl_schema"._debug();
 drop function if exists :"dpl_schema".finish_batch(bigint);
 drop function if exists :"dpl_schema".next_batch();
 drop function if exists :"dpl_schema".prepare_batches(numeric);
 drop function if exists :"dpl_schema".capture_delta(text, text, numeric);
 drop function if exists :"dpl_schema".initialize(text, text, numeric);
+drop function if exists :"dpl_schema".initialize(text, text, numeric, boolean);
 drop function if exists :"dpl_schema"._batch_total();
 drop function if exists :"dpl_schema"._unassigned();
 drop function if exists :"dpl_schema"._unfinished();

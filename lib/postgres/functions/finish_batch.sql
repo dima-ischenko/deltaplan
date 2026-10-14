@@ -7,12 +7,11 @@ language plpgsql
 set search_path = pg_temp, :"dpl_schema", public as $$
 declare
     l_target   text;
-    l_segment  text;
     l_batch_no numeric;
     l_marked   bigint;
 begin
-    select target_table, data_segment, batch_no
-    into l_target, l_segment, l_batch_no
+    select target_table, batch_no
+    into l_target, l_batch_no
     from dpl_session_tmp
     where id = 1;
 
@@ -25,9 +24,7 @@ begin
 
     update dpl_keys_tmp
     set batch_done = 1
-    where target_table = l_target
-      and data_segment = l_segment
-      and batch_no = l_batch_no
+    where batch_no = l_batch_no
       and batch_done = 0;
     get diagnostics l_marked = row_count;
 
@@ -41,9 +38,15 @@ begin
     set batch_no = null
     where id = 1;
 
-    raise notice 'finish_batch: batch % marked=% merged=%',
-        l_batch_no,
-        l_marked,
-        coalesce(p_merged::text, 'n/a');
+    perform _log(
+        'finish_batch',
+        coalesce(p_merged, l_marked),
+        format(
+            'batch %s marked=%s merged=%s',
+            l_batch_no,
+            l_marked,
+            coalesce(p_merged::text, 'n/a')
+        )
+    );
 end;
 $$;

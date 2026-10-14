@@ -9,14 +9,13 @@ language plpgsql
 set search_path = pg_temp, :"dpl_schema", public as $$
 declare
     l_target   text;
-    l_segment  text;
     l_ready    boolean;
     l_batch_no numeric;
     l_keys     bigint;
     l_next     numeric;
 begin
-    select target_table, data_segment, batches_ready, batch_no
-    into l_target, l_segment, l_ready, l_batch_no
+    select target_table, batches_ready, batch_no
+    into l_target, l_ready, l_batch_no
     from dpl_session_tmp
     where id = 1;
 
@@ -41,9 +40,7 @@ begin
     select min(batch_no)
     into l_next
     from dpl_keys_tmp
-    where target_table = l_target
-      and data_segment = l_segment
-      and batch_no is not null
+    where batch_no is not null
       and batch_done = 0;
 
     if l_next is null then
@@ -55,7 +52,7 @@ begin
         set batch_no = null
         where id = 1;
         delete from dpl_batch_tmp;
-        raise notice 'next_batch: 0 | nothing left to apply';
+        perform _log('next_batch', 0, 'nothing left to apply');
         return false;
     end if;
 
@@ -63,9 +60,7 @@ begin
     insert into dpl_batch_tmp (pk_1, pk_2, pk_3)
     select distinct pk_1, pk_2, pk_3
     from dpl_keys_tmp
-    where target_table = l_target
-      and data_segment = l_segment
-      and batch_no = l_next
+    where batch_no = l_next
       and batch_done = 0;
     get diagnostics l_keys = row_count;
 
@@ -74,8 +69,11 @@ begin
     end if;
 
     update dpl_session_tmp set batch_no = l_next where id = 1;
-    raise notice 'next_batch: % | batch %/% opened',
-        l_keys, l_next, _batch_total();
+    perform _log(
+        'next_batch',
+        l_keys,
+        format('batch %s/%s opened', l_next, _batch_total())
+    );
     return true;
 end;
 $$;

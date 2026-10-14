@@ -3,6 +3,7 @@ create or replace package pkg_dpl_test is
 
     c_target constant varchar2(128) := 'inc_test_tgt';
     c_t1     constant date := timestamp '2024-01-15 10:00:00';
+    c_t1b    constant date := timestamp '2024-01-15 10:00:01';
     c_t2     constant date := timestamp '2024-02-01 00:00:00';
     c_noon   constant date := timestamp '2024-06-01 12:00:00';
 
@@ -56,8 +57,11 @@ create or replace package body pkg_dpl_test is
     begin
         delete from dpl_keys_tmp;
         delete from dpl_batch_tmp;
+        delete from dpl_log;
         delete from dpl_watermark
         where target_table in (c_target, 'other_tgt');
+
+        pkg_dpl.set_log_table(false);
 
         delete from inc_test_a;
         delete from inc_test_b;
@@ -108,8 +112,6 @@ create or replace package body pkg_dpl_test is
             from dpl_keys_tmp k
             left join inc_test_a a on a.id = k.pk_1
             left join inc_test_b b on b.id = k.pk_1
-            where k.target_table = pkg_dpl.get_target_table
-              and k.data_segment = pkg_dpl.get_data_segment
             group by k.pk_1
         ) s
         on (t.id = s.id)
@@ -147,8 +149,6 @@ create or replace package body pkg_dpl_test is
         from (
             select distinct pk_1, pk_2, pk_3
             from dpl_keys_tmp
-            where target_table = c_target
-              and data_segment = 'all'
         );
 
         return to_char(l_cnt);

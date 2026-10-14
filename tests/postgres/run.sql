@@ -23,6 +23,7 @@ where target_table in ('inc_test_tgt', 'other_tgt');
 \i tests/postgres/cases/same_result.sql
 \i tests/postgres/cases/rerun_after_failed_batch.sql
 \i tests/postgres/cases/batch_guards.sql
+\i tests/postgres/cases/debug_and_log.sql
 \i tests/postgres/cases/one_pk_one_batch.sql
 \i tests/postgres/cases/rollback_without_commit.sql
 \i tests/postgres/cases/volume.sql

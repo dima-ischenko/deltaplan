@@ -13,7 +13,6 @@ language plpgsql
 set search_path = pg_temp, :"dpl_schema", public as $$
 declare
     l_target    text;
-    l_segment   text;
     l_size      numeric;
     l_assigned  boolean;
     l_keys      bigint;
@@ -21,8 +20,8 @@ declare
     l_open_rows boolean;
     l_batch_no  numeric;
 begin
-    select target_table, data_segment, batch_size, batch_no
-    into l_target, l_segment, l_size, l_batch_no
+    select target_table, batch_size, batch_no
+    into l_target, l_size, l_batch_no
     from dpl_session_tmp
     where id = 1;
 
@@ -36,9 +35,7 @@ begin
     select exists (
         select 1
         from dpl_keys_tmp
-        where target_table = l_target
-          and data_segment = l_segment
-          and batch_no is not null
+        where batch_no is not null
     ) into l_assigned;
 
     if l_assigned and l_size is not null and p_batch_size <> l_size then
@@ -58,8 +55,6 @@ begin
     from (
         select distinct pk_1, pk_2, pk_3
         from dpl_keys_tmp
-        where target_table = l_target
-          and data_segment = l_segment
     ) k;
 
     update dpl_session_tmp
@@ -69,7 +64,7 @@ begin
     where id = 1;
 
     if l_keys = 0 then
-        raise notice 'prepare_batches: 0 | no keys, nothing to apply';
+        perform _log('prepare_batches', 0, 'no keys, nothing to apply');
         return;
     end if;
 
@@ -85,13 +80,9 @@ begin
             from (
                 select distinct pk_1, pk_2, pk_3
                 from dpl_keys_tmp
-                where target_table = l_target
-                  and data_segment = l_segment
             ) d
         ) s
-        where t.target_table = l_target
-          and t.data_segment = l_segment
-          and t.pk_1 = s.pk_1
+        where t.pk_1 = s.pk_1
           and t.pk_2 is not distinct from s.pk_2
           and t.pk_3 is not distinct from s.pk_3
           and t.batch_no is null;
@@ -101,14 +92,21 @@ begin
             raise exception 'DP-20011 batch numbers were not assigned';
         end if;
 
-        raise notice 'prepare_batches: % | assigned batch_no batch_size=% distinct_pk=%',
-            l_updated, p_batch_size, l_keys;
+        perform _log(
+            'prepare_batches',
+            l_updated,
+            format('assigned batch_no batch_size=%s distinct_pk=%s', p_batch_size, l_keys)
+        );
     else
-        raise notice 'prepare_batches: % | batch numbers already assigned batch_size=%', l_keys, l_size;
+        perform _log(
+            'prepare_batches',
+            l_keys,
+            format('batch numbers already assigned batch_size=%s', l_size)
+        );
     end if;
 
     if _unfinished() = 0 then
-        raise notice 'prepare_batches: 0 | nothing left to apply';
+        perform _log('prepare_batches', 0, 'nothing left to apply');
         return;
     end if;
 end;

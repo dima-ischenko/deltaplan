@@ -13,6 +13,7 @@ declare
 begin
     drop_tbl('dpl_batch_tmp');
     drop_tbl('dpl_keys_tmp');
+    drop_tbl('dpl_log');
     drop_tbl('dpl_watermark');
 
     -- leftover names from earlier layouts

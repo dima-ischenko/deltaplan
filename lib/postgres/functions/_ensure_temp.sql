@@ -23,14 +23,39 @@ begin
             batch_no        numeric,
             batch_size      numeric,
             batches_ready   boolean,
+            debug           boolean not null default false,
+            log_table       boolean not null default false,
             constraint ck_dpl_session_tmp_id check (id = 1)
         ) on commit preserve rows%s
     $sql$, l_by_id);
 
+    if to_regclass('dpl_session_tmp') is not null
+       and not exists (
+           select 1
+           from pg_attribute
+           where attrelid = to_regclass('dpl_session_tmp')
+             and attname = 'debug'
+             and not attisdropped
+       ) then
+        alter table dpl_session_tmp add column debug boolean not null default false;
+        alter table dpl_session_tmp add column log_table boolean not null default false;
+    end if;
+
+    -- An older session may still have target_table / data_segment on the keys
+    -- table. Those belong in dpl_session_tmp; drop and recreate.
+    if to_regclass('dpl_keys_tmp') is not null
+       and exists (
+           select 1
+           from pg_attribute
+           where attrelid = to_regclass('dpl_keys_tmp')
+             and attname = 'target_table'
+             and not attisdropped
+       ) then
+        drop table dpl_keys_tmp;
+    end if;
+
     execute format($sql$
         create temp table if not exists dpl_keys_tmp (
-            target_table    text        not null,
-            data_segment    text        not null,
             source_table    text        not null,
             pk_1            text        not null,
             pk_2            text,
@@ -51,6 +76,6 @@ begin
     $sql$, l_by_pk);
 
     create index if not exists idx_dpl_keys_tmp_batch
-        on dpl_keys_tmp (target_table, data_segment, batch_no, batch_done);
+        on dpl_keys_tmp (batch_no, batch_done);
 end;
 $$;

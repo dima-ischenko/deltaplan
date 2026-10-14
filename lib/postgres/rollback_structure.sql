@@ -1,5 +1,6 @@
 ------- ddl_dml
 drop table if exists :"dpl_schema".dpl_watermark;
+drop table if exists :"dpl_schema".dpl_log;
 drop table if exists dpl_keys_tmp;
 drop table if exists dpl_batch_tmp;
 drop table if exists dpl_session_tmp;

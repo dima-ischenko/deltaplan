@@ -39,24 +39,24 @@ begin
         (3, 'cara', 'east', timestamp '2024-01-15 10:00:00');
 
     insert into orders (id, customer_id, order_date, status, order_discount, updated_at) values
-        (101, 1, date '2024-01-10', 'completed', 0, timestamp '2024-01-15 10:00:00');
+        (101, 1, date '2024-01-10', 'completed', 0, timestamp '2024-01-15 10:00:01');
     insert into orders (id, customer_id, order_date, status, order_discount, updated_at) values
-        (102, 1, date '2024-01-12', 'completed', 0.1, timestamp '2024-01-15 10:00:00');
+        (102, 1, date '2024-01-12', 'completed', 0.1, timestamp '2024-01-15 10:00:01');
     insert into orders (id, customer_id, order_date, status, order_discount, updated_at) values
-        (201, 2, date '2024-01-11', 'new', 0, timestamp '2024-01-15 10:00:00');
+        (201, 2, date '2024-01-11', 'new', 0, timestamp '2024-01-15 10:00:01');
     insert into orders (id, customer_id, order_date, status, order_discount, updated_at) values
-        (301, 3, date '2024-01-13', 'completed', 0, timestamp '2024-01-15 10:00:00');
+        (301, 3, date '2024-01-13', 'completed', 0, timestamp '2024-01-15 10:00:01');
 
     insert into order_items (order_id, product_id, quantity, price, updated_at) values
-        (101, 1, 1, 10, timestamp '2024-01-15 10:00:00');
+        (101, 1, 1, 10, timestamp '2024-01-15 10:00:02');
     insert into order_items (order_id, product_id, quantity, price, updated_at) values
-        (101, 2, 2, 20, timestamp '2024-01-15 10:00:00');
+        (101, 2, 2, 20, timestamp '2024-01-15 10:00:02');
     insert into order_items (order_id, product_id, quantity, price, updated_at) values
-        (102, 1, 1, 50, timestamp '2024-01-15 10:00:00');
+        (102, 1, 1, 50, timestamp '2024-01-15 10:00:02');
     insert into order_items (order_id, product_id, quantity, price, updated_at) values
-        (201, 1, 1, 100, timestamp '2024-01-15 10:00:00');
+        (201, 1, 1, 100, timestamp '2024-01-15 10:00:02');
     insert into order_items (order_id, product_id, quantity, price, updated_at) values
-        (301, 1, 3, 7, timestamp '2024-01-15 10:00:00');
+        (301, 1, 3, 7, timestamp '2024-01-15 10:00:02');
 
     commit;
 end seed_customer_metrics;
@@ -178,8 +178,6 @@ create or replace procedure run_customer_metrics(p_batch_size number default nul
                 with changed as (
                     select pk_1 as customer_id
                     from dpl_keys_tmp
-                    where target_table = pkg_dpl.get_target_table
-                      and data_segment = pkg_dpl.get_data_segment
                     group by pk_1
                 ),
                 order_amount as (
@@ -277,7 +275,7 @@ create or replace procedure run_customer_metrics(p_batch_size number default nul
             );
     end merge_batch;
 begin
-    pkg_dpl.initialize('customer_metrics', 'all', 2);
+    pkg_dpl.initialize('customer_metrics', 'all');
     capture_all;
 
     if p_batch_size is null then

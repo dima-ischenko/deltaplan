@@ -1,6 +1,6 @@
 -- Delta on top of seed_volume.sql. Does not truncate or reload the base.
 --
--- Default: 7% of the customers already loaded. c_delta_mode is update
+-- Default: a percentage of the customers already loaded. c_delta_mode is update
 -- (only updates), insert (only new customers), or mix (half of each).
 -- Run it again to plant another slice. This script does not touch
 -- dpl_watermark. If run.sql has already stored one, planted rows get a
@@ -10,7 +10,7 @@ set serveroutput on size unlimited
 set timing on
 
 declare
-    c_delta_pct   constant number := 7;
+    c_delta_pct   constant number := 10;
     -- update | insert | mix
     c_delta_mode  constant varchar2(10) := 'update';
     c_order_chunk constant number := 50000;
@@ -226,9 +226,9 @@ end;
 /
 
 begin
-    dbms_stats.gather_table_stats(user, 'CUSTOMERS', estimate_percent => 1, cascade => true);
-    dbms_stats.gather_table_stats(user, 'ORDERS', estimate_percent => 1, cascade => true);
-    dbms_stats.gather_table_stats(user, 'ORDER_ITEMS', estimate_percent => 1, cascade => true);
+    dbms_stats.gather_table_stats(user, 'CUSTOMERS', cascade => true);
+    dbms_stats.gather_table_stats(user, 'ORDERS', cascade => true);
+    dbms_stats.gather_table_stats(user, 'ORDER_ITEMS', cascade => true);
     dbms_output.put_line(to_char(systimestamp, 'hh24:mi:ss.ff3') || ' seed_delta: stats gathered, next: @demo/oracle/run.sql');
 exception
     when others then

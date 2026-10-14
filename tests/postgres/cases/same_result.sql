@@ -9,8 +9,8 @@ begin
     call dpl_test.reset();
     call dpl_test.add_row('inc_test_a', 'a', 10, c_t1);
     call dpl_test.add_row('inc_test_a', 'b', 20, c_t1);
-    call dpl_test.add_row('inc_test_b', 'b', 3, c_t1);
-    call dpl_test.add_row('inc_test_b', 'c', 4, c_t1);
+    call dpl_test.add_row('inc_test_b', 'b', 3, c_t1 + interval '1 second');
+    call dpl_test.add_row('inc_test_b', 'c', 4, c_t1 + interval '1 second');
     call dpl_test.capture_both();
     call dpl_test.merge_all();
     perform finalize();

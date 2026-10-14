@@ -2,13 +2,13 @@
 
 Call `pkg_dpl` after you [deploy](deploy.md) it into the calculating user's schema. Methods and parameters: [root README](../../README.md).
 
-Without batches, one refresh reads `dpl_keys_tmp` for the current target and segment. With batches, each refresh reads `dpl_batch_tmp`.
+Without batches, one refresh reads `dpl_keys_tmp`. The table holds only the current run. With batches, each refresh reads `dpl_batch_tmp`.
 
 ```sql
 declare
     l_change_date date := sysdate;
 begin
-    pkg_dpl.initialize('customer_metrics', 'all', 2);
+    pkg_dpl.initialize('customer_metrics', 'all');
 
     pkg_dpl.capture_delta('customers', q'[
         select id as pk_1,

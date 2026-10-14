@@ -1,7 +1,8 @@
 create or replace function initialize(
     p_target_table    text,
     p_data_segment    text default 'all',
-    p_lookback_hours  numeric default 0
+    p_lookback_hours  numeric default 0,
+    p_debug           boolean default false
 )
 returns void
 language plpgsql
@@ -26,10 +27,10 @@ begin
 
     insert into dpl_session_tmp (
         id, target_table, data_segment, lookback_hours,
-        batch_no, batch_size, batches_ready
+        batch_no, batch_size, batches_ready, debug
     ) values (
         1, l_target, l_segment, l_lookback,
-        null, null, false
+        null, null, false, p_debug is true
     )
     on conflict (id) do update set
         target_table = excluded.target_table,
@@ -37,16 +38,18 @@ begin
         lookback_hours = excluded.lookback_hours,
         batch_no = null,
         batch_size = null,
-        batches_ready = false;
+        batches_ready = false,
+        debug = excluded.debug;
 
-    delete from dpl_keys_tmp
-    where target_table = l_target
-      and data_segment = l_segment;
+    delete from dpl_keys_tmp;
     get diagnostics l_rows = row_count;
 
     delete from dpl_batch_tmp;
 
-    raise notice 'initialize: % | target=% segment=% lookback_hours=%',
-        l_rows, l_target, l_segment, l_lookback;
+    perform _log(
+        'initialize',
+        l_rows,
+        format('target=%s segment=%s lookback_hours=%s', l_target, l_segment, l_lookback)
+    );
 end;
 $$;

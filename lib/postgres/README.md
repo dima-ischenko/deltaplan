@@ -2,14 +2,14 @@
 
 [Deploy](deploy.md) into a schema and put that schema on `search_path`. Methods and parameters: [root README](../../README.md). From SQL, call the functions with `select`. From PL/pgSQL, use `perform`.
 
-Without batches, one refresh reads `dpl_keys_tmp` for the current target and segment. With batches, each refresh reads `dpl_batch_tmp`. `MERGE` needs PostgreSQL 15+. Greenplum has no `MERGE`: use `UPDATE` then `INSERT`.
+Without batches, one refresh reads `dpl_keys_tmp`. The table holds only the current run. With batches, each refresh reads `dpl_batch_tmp`. `MERGE` needs PostgreSQL 15+. Greenplum has no `MERGE`: use `UPDATE` then `INSERT`.
 
 ```sql
 do $run$
 declare
     v_change_date timestamp := clock_timestamp();
 begin
-    perform initialize('customer_metrics', 'all', 2);
+    perform initialize('customer_metrics', 'all');
 
     perform capture_delta('customers', $sql$
         select id::text as pk_1,

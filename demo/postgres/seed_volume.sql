@@ -77,7 +77,7 @@ begin
                else 'completed'
            end,
            case when n % 10 = 0 then 0.1 else 0 end,
-           c_base_updated_at
+           c_base_updated_at + interval '1 second'
     from generate_series(1, c_orders) n;
 
     get diagnostics l_rows = row_count;
@@ -96,7 +96,7 @@ begin
                p.product_id,
                1 + (o.order_id + p.product_id) % 5,
                round((50 + ((o.order_id * 7 + p.product_id * 11) % 50000) / 100.0)::numeric, 2),
-               c_base_updated_at
+               c_base_updated_at + interval '2 seconds'
         from generate_series(l_from, l_from + l_chunk - 1) as o(order_id)
         cross join generate_series(1, c_items_per_order) as p(product_id);
 

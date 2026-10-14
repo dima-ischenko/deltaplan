@@ -10,9 +10,8 @@ declare
     l_change_date date := sysdate;
 begin
     pkg_dpl.initialize(
-        p_target_table   => 'customer_metrics',
-        p_data_segment   => 'all',
-        p_lookback_hours => 2
+        p_target_table => 'customer_metrics',
+        p_data_segment => 'all'
     );
 
     pkg_dpl.capture_delta(

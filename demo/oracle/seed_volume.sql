@@ -123,7 +123,7 @@ begin
                    else 'completed'
                end,
                case when mod(l_from + level, 10) = 0 then 0.1 else 0 end,
-               c_base_updated_at
+               c_base_updated_at + 1 / 86400
         from dual
         connect by level <= l_chunk;
 
@@ -146,7 +146,7 @@ begin
                p.product_id,
                1 + mod(o.order_id + p.product_id, 5),
                round(50 + mod(o.order_id * 7 + p.product_id * 11, 50000) / 100, 2),
-               c_base_updated_at
+               c_base_updated_at + 2 / 86400
         from (
             select l_from + level - 1 as order_id
             from dual
@@ -190,10 +190,10 @@ end;
 @demo/oracle/indexes.sql
 
 begin
-    dbms_stats.gather_table_stats(user, 'CUSTOMERS', estimate_percent => 1, cascade => true);
-    dbms_stats.gather_table_stats(user, 'ORDERS', estimate_percent => 1, cascade => true);
-    dbms_stats.gather_table_stats(user, 'ORDER_ITEMS', estimate_percent => 1, cascade => true);
-    dbms_stats.gather_table_stats(user, 'CUSTOMER_METRICS', estimate_percent => 100, cascade => true);
+    dbms_stats.gather_table_stats(user, 'CUSTOMERS', cascade => true);
+    dbms_stats.gather_table_stats(user, 'ORDERS', cascade => true);
+    dbms_stats.gather_table_stats(user, 'ORDER_ITEMS', cascade => true);
+    dbms_stats.gather_table_stats(user, 'CUSTOMER_METRICS', cascade => true);
     dbms_output.put_line(to_char(systimestamp, 'hh24:mi:ss.ff3') || ' seed_volume: stats gathered, next: @demo/oracle/run.sql');
 exception
     when others then

@@ -9,6 +9,8 @@ create or replace package body pkg_dpl is
     gv_commit_batch    boolean := true;
     gv_batches_ready   boolean := false;
     gv_output_ready    boolean := false;
+    gv_debug           boolean := false;
+    gv_log_table       boolean := false;
 
     c_w_proc   constant pls_integer := 26;
     c_w_name   constant pls_integer := 28;
@@ -66,7 +68,43 @@ create or replace package body pkg_dpl is
             || rpad(p_rows, 16) || '| '
             || p_text
         );
+
+        if gv_log_table then
+            write_log_row(
+                p_proc_name,
+                p_rows,
+                p_text
+            );
+        end if;
     end i_log;
+
+    -- Survives a rollback of the run. PostgreSQL has no analog.
+    procedure write_log_row(
+        p_proc_name varchar2,
+        p_rows      number,
+        p_text      varchar2
+    ) is
+        pragma autonomous_transaction;
+    begin
+        insert into dpl_log (
+            logged_at,
+            proc_name,
+            target_table,
+            data_segment,
+            batch_no,
+            log_rows,
+            message
+        ) values (
+            systimestamp,
+            p_proc_name,
+            gv_target_table,
+            gv_data_segment,
+            gv_batch_no,
+            p_rows,
+            substr(p_text, 1, 4000)
+        );
+        commit;
+    end write_log_row;
 
     procedure assert_ready is
     begin
@@ -127,9 +165,7 @@ create or replace package body pkg_dpl is
         select count(distinct batch_no)
         into l_left
         from dpl_keys_tmp
-        where target_table = gv_target_table
-          and data_segment = gv_data_segment
-          and batch_no is not null
+        where batch_no is not null
           and batch_done = 0;
 
         return l_left;
@@ -190,15 +226,19 @@ create or replace package body pkg_dpl is
         return gv_data_segment;
     end get_data_segment;
 
-    function get_lookback_hours return number is
-    begin
-        return gv_lookback_hours;
-    end get_lookback_hours;
-
     function get_batch_no return number is
     begin
         return gv_batch_no;
     end get_batch_no;
+
+    procedure set_log_table(p_enabled boolean default true) is
+    begin
+        if p_enabled then
+            gv_log_table := true;
+        else
+            gv_log_table := false;
+        end if;
+    end set_log_table;
 
     function get_watermark(p_source_table varchar2) return date is
         l_result date;
@@ -216,7 +256,8 @@ create or replace package body pkg_dpl is
     procedure initialize(
         p_target_table    varchar2,
         p_data_segment    varchar2 default 'all',
-        p_lookback_hours  number   default 0
+        p_lookback_hours  number   default 0,
+        p_debug           boolean  default false
     ) is
         l_proc_name  varchar2(64) := get_proc_name('initialize');
         l_started    timestamp := systimestamp;
@@ -239,15 +280,18 @@ create or replace package body pkg_dpl is
         gv_target_table := lower(p_target_table);
         gv_data_segment := lower(p_data_segment);
         gv_lookback_hours := nvl(p_lookback_hours, 0);
+        if p_debug then
+            gv_debug := true;
+        else
+            gv_debug := false;
+        end if;
         gv_batch_no := null;
         gv_batch_size := null;
         gv_batch_total := null;
         gv_commit_batch := true;
         gv_batches_ready := false;
 
-        delete from dpl_keys_tmp
-        where target_table = gv_target_table
-          and data_segment = gv_data_segment;
+        delete from dpl_keys_tmp;
         l_rows := sql%rowcount;
 
         delete from dpl_batch_tmp;
@@ -347,8 +391,6 @@ create or replace package body pkg_dpl is
         l_insert_sql := '
             begin
                 insert into dpl_keys_tmp (
-                    target_table,
-                    data_segment,
                     source_table,
                     pk_1,
                     pk_2,
@@ -356,8 +398,6 @@ create or replace package body pkg_dpl is
                     watermark
                 )
                 select
-                    :target_table,
-                    :data_segment,
                     :source_table,
                     s.pk_1,
                     ' || l_pk2 || ',
@@ -368,24 +408,23 @@ create or replace package body pkg_dpl is
             end;';
 
         execute immediate l_insert_sql
-            using in gv_target_table, in gv_data_segment, in l_source_table, in l_bound,
-                  out l_rows;
+            using in l_source_table, in l_bound, out l_rows;
 
-        select nvl(sum(cnt), 0),
-               min(min_wm),
-               max(max_wm),
-               count(*)
-        into l_slice_rows, l_min, l_max, l_slice_pk
-        from (
-            select count(*) cnt,
-                   min(watermark) min_wm,
-                   max(watermark) max_wm
-            from dpl_keys_tmp
-            where target_table = gv_target_table
-              and data_segment = gv_data_segment
-              and source_table = l_source_table
-            group by pk_1, pk_2, pk_3
-        );
+        if gv_debug then
+            select nvl(sum(cnt), 0),
+                   min(min_wm),
+                   max(max_wm),
+                   count(*)
+            into l_slice_rows, l_min, l_max, l_slice_pk
+            from (
+                select count(*) cnt,
+                       min(watermark) min_wm,
+                       max(watermark) max_wm
+                from dpl_keys_tmp
+                where source_table = l_source_table
+                group by pk_1, pk_2, pk_3
+            );
+        end if;
 
         i_log(
             l_proc_name,
@@ -395,10 +434,15 @@ create or replace package body pkg_dpl is
             || fmt_col('lookback_hours=' || fmt_num(l_lookback), 20)
             || fmt_col('bound=' || fmt_date(l_bound), c_w_date)
             || fmt_col('inserted=' || l_rows, 20)
-            || fmt_col('slice_rows=' || l_slice_rows, 22)
-            || fmt_col('slice_pk=' || l_slice_pk, 20)
-            || fmt_col('min=' || fmt_date(l_min), c_w_date)
-            || fmt_col('max=' || fmt_date(l_max), c_w_date)
+            || case
+                   when gv_debug then
+                       fmt_col('slice_rows=' || l_slice_rows, 22)
+                       || fmt_col('slice_pk=' || l_slice_pk, 20)
+                       || fmt_col('min=' || fmt_date(l_min), c_w_date)
+                       || fmt_col('max=' || fmt_date(l_max), c_w_date)
+                   else
+                       null
+               end
             || fmt_num(round(seconds_since(l_started), 3)) || 's'
         );
     exception
@@ -442,8 +486,6 @@ create or replace package body pkg_dpl is
         from (
             select max(case when batch_no is not null then 1 else 0 end) assigned_flag
             from dpl_keys_tmp
-            where target_table = gv_target_table
-              and data_segment = gv_data_segment
             group by pk_1, pk_2, pk_3
         );
 
@@ -488,13 +530,9 @@ create or replace package body pkg_dpl is
                     from (
                         select distinct pk_1, pk_2, pk_3
                         from dpl_keys_tmp
-                        where target_table = gv_target_table
-                          and data_segment = gv_data_segment
                     )
                 ) s
-                on (t.target_table = gv_target_table
-                    and t.data_segment = gv_data_segment
-                    and t.pk_1 = s.pk_1
+                on (t.pk_1 = s.pk_1
                     and decode(t.pk_2, s.pk_2, 1, 0) = 1
                     and decode(t.pk_3, s.pk_3, 1, 0) = 1)
                 when matched then update
@@ -526,9 +564,7 @@ create or replace package body pkg_dpl is
                    count(distinct case when batch_done = 0 then batch_no end)
             into l_total, l_left
             from dpl_keys_tmp
-            where target_table = gv_target_table
-              and data_segment = gv_data_segment
-              and batch_no is not null;
+            where batch_no is not null;
 
             gv_batch_total := l_total;
 
@@ -550,9 +586,7 @@ create or replace package body pkg_dpl is
         insert into dpl_batch_tmp (pk_1, pk_2, pk_3)
         select distinct pk_1, pk_2, pk_3
         from dpl_keys_tmp
-        where target_table = gv_target_table
-          and data_segment = gv_data_segment
-          and batch_no = p_batch_no
+        where batch_no = p_batch_no
           and batch_done = 0;
 
         p_keys := sql%rowcount;
@@ -576,9 +610,7 @@ create or replace package body pkg_dpl is
             select min(batch_no)
             into l_next
             from dpl_keys_tmp
-            where target_table = gv_target_table
-              and data_segment = gv_data_segment
-              and batch_no is not null
+            where batch_no is not null
               and batch_done = 0;
 
             if l_next is null then
@@ -624,9 +656,7 @@ create or replace package body pkg_dpl is
         begin
             update dpl_keys_tmp
             set batch_done = 1
-            where target_table = gv_target_table
-              and data_segment = gv_data_segment
-              and batch_no = l_batch_no
+            where batch_no = l_batch_no
               and batch_done = 0;
 
             if sql%rowcount = 0 then
@@ -707,21 +737,21 @@ create or replace package body pkg_dpl is
         l_effective date;
         l_moved     number := 0;
         l_effect    varchar2(16);
+        l_src_rows  number;
+        l_pk_rows   number;
     begin
         assert_ready;
 
-        select count(*),
-               nvl(max(has_unassigned), 0),
-               count(distinct unfinished_bn)
-        into l_all_pk, l_unassigned, l_left
-        from (
-            select max(case when batch_no is null then 1 else 0 end) has_unassigned,
-                   min(case when batch_no is not null and batch_done = 0 then batch_no end) unfinished_bn
+        l_left := unfinished_batches;
+        if gv_batches_ready then
+            select count(*)
+            into l_unassigned
             from dpl_keys_tmp
-            where target_table = gv_target_table
-              and data_segment = gv_data_segment
-            group by pk_1, pk_2, pk_3
-        );
+            where batch_no is null
+              and rownum = 1;
+        else
+            l_unassigned := 0;
+        end if;
 
         if l_left > 0
            or (gv_batches_ready and l_unassigned > 0) then
@@ -735,20 +765,19 @@ create or replace package body pkg_dpl is
 
         gv_batches_ready := false;
 
+        if gv_debug then
+            select count(*)
+            into l_all_pk
+            from (
+                select distinct pk_1, pk_2, pk_3
+                from dpl_keys_tmp
+            );
+        end if;
+
         for ir in (
             select source_table,
-                   max(watermark) watermark,
-                   sum(src_rows) src_rows,
-                   count(*) pk_rows
-            from (
-                select source_table,
-                       count(*) src_rows,
-                       max(watermark) watermark
-                from dpl_keys_tmp
-                where target_table = gv_target_table
-                  and data_segment = gv_data_segment
-                group by source_table, pk_1, pk_2, pk_3
-            )
+                   max(watermark) watermark
+            from dpl_keys_tmp
             group by source_table
             order by source_table
         ) loop
@@ -784,18 +813,35 @@ create or replace package body pkg_dpl is
 
             store_watermark(ir.source_table, l_effective, l_moved);
 
+            if gv_debug then
+                select nvl(sum(cnt), 0),
+                       count(*)
+                into l_src_rows, l_pk_rows
+                from (
+                    select count(*) cnt
+                    from dpl_keys_tmp
+                    where source_table = ir.source_table
+                    group by pk_1, pk_2, pk_3
+                );
+            end if;
+
             i_log(
                 l_proc_name,
-                ir.pk_rows,
+                nvl(l_pk_rows, 0),
                 fmt_col('source=' || ir.source_table, c_w_name)
                 || fmt_col('stored=' || fmt_date(l_old), c_w_date)
                 || fmt_col('captured=' || fmt_date(ir.watermark), c_w_date)
                 || fmt_col('effective=' || fmt_date(l_effective), c_w_date)
                 || fmt_col(l_effect, c_w_effect)
                 || 'moved=' || l_moved
-                || ' rows=' || ir.src_rows
-                || ' pk=' || ir.pk_rows
-                || ' all_pk=' || l_all_pk
+                || case
+                       when gv_debug then
+                           ' rows=' || l_src_rows
+                           || ' pk=' || l_pk_rows
+                           || ' all_pk=' || l_all_pk
+                       else
+                           null
+                   end
             );
         end loop;
 
@@ -805,9 +851,9 @@ create or replace package body pkg_dpl is
 
         i_log(
             l_proc_name,
-            l_all_pk,
+            l_sources,
             'sources=' || l_sources
-            || ' distinct_pk=' || l_all_pk
+            || case when gv_debug then ' distinct_pk=' || l_all_pk else null end
             || ' ' || fmt_num(round(seconds_since(l_started), 3)) || 's'
         );
 

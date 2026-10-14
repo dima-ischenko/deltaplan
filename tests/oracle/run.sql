@@ -44,6 +44,7 @@ end;
 @tests/oracle/cases/same_result.sql
 @tests/oracle/cases/rerun_after_failed_batch.sql
 @tests/oracle/cases/batch_guards.sql
+@tests/oracle/cases/debug_and_log.sql
 @tests/oracle/cases/one_pk_one_batch.sql
 @tests/oracle/cases/rollback_without_commit.sql
 @tests/oracle/cases/volume.sql

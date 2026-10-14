@@ -8,8 +8,8 @@ begin
     call dpl_test.reset();
     call dpl_test.add_row('inc_test_a', 'a', 10, c_t1);
     call dpl_test.add_row('inc_test_a', 'b', 20, c_t1);
-    call dpl_test.add_row('inc_test_b', 'a', 1, c_t1);
-    call dpl_test.add_row('inc_test_b', 'b', 2, c_t1);
+    call dpl_test.add_row('inc_test_b', 'a', 1, c_t1 + interval '1 second');
+    call dpl_test.add_row('inc_test_b', 'b', 2, c_t1 + interval '1 second');
     call dpl_test.capture_both();
     perform prepare_batches(10);
     if not next_batch() then
@@ -17,9 +17,7 @@ begin
     end if;
     select count(*)::integer into l_rows from dpl_batch_tmp;
     select count(*)::integer into l_temp
-    from dpl_keys_tmp
-    where target_table = 'inc_test_tgt'
-      and data_segment = 'all';
+    from dpl_keys_tmp;
     call dpl_test.eq('one pk keys', dpl_test.ids_in_batch(), 'a,b');
     call dpl_test.eq('one pk batch rows', l_rows::text, '2');
     call dpl_test.eq('one pk temp rows', l_temp::text, '4');

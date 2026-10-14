@@ -29,17 +29,17 @@ begin
         (3, 'cara', 'east', timestamp '2024-01-15 10:00:00');
 
     insert into orders (id, customer_id, order_date, status, order_discount, updated_at) values
-        (101, 1, date '2024-01-10', 'completed', 0, timestamp '2024-01-15 10:00:00'),
-        (102, 1, date '2024-01-12', 'completed', 0.1, timestamp '2024-01-15 10:00:00'),
-        (201, 2, date '2024-01-11', 'new', 0, timestamp '2024-01-15 10:00:00'),
-        (301, 3, date '2024-01-13', 'completed', 0, timestamp '2024-01-15 10:00:00');
+        (101, 1, date '2024-01-10', 'completed', 0, timestamp '2024-01-15 10:00:01'),
+        (102, 1, date '2024-01-12', 'completed', 0.1, timestamp '2024-01-15 10:00:01'),
+        (201, 2, date '2024-01-11', 'new', 0, timestamp '2024-01-15 10:00:01'),
+        (301, 3, date '2024-01-13', 'completed', 0, timestamp '2024-01-15 10:00:01');
 
     insert into order_items (order_id, product_id, quantity, price, updated_at) values
-        (101, 1, 1, 10, timestamp '2024-01-15 10:00:00'),
-        (101, 2, 2, 20, timestamp '2024-01-15 10:00:00'),
-        (102, 1, 1, 50, timestamp '2024-01-15 10:00:00'),
-        (201, 1, 1, 100, timestamp '2024-01-15 10:00:00'),
-        (301, 1, 3, 7, timestamp '2024-01-15 10:00:00');
+        (101, 1, 1, 10, timestamp '2024-01-15 10:00:02'),
+        (101, 2, 2, 20, timestamp '2024-01-15 10:00:02'),
+        (102, 1, 1, 50, timestamp '2024-01-15 10:00:02'),
+        (201, 1, 1, 100, timestamp '2024-01-15 10:00:02'),
+        (301, 1, 3, 7, timestamp '2024-01-15 10:00:02');
 end;
 $$;
 
@@ -117,7 +117,7 @@ set search_path = pg_temp, lib, public as $$
 declare
     v_change_date timestamp := clock_timestamp();
 begin
-    perform initialize('customer_metrics', 'all', 2);
+    perform initialize('customer_metrics', 'all');
 
     perform capture_delta(
         'customers',
@@ -160,8 +160,6 @@ begin
             with changed as (
                 select pk_1::integer as customer_id
                 from dpl_keys_tmp
-                where target_table = get_target_table()
-                  and data_segment = get_data_segment()
                 group by pk_1
             ),
             order_amount as (

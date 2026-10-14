@@ -12,9 +12,8 @@ declare
     v_change_date timestamp := clock_timestamp();
 begin
     perform initialize(
-        p_target_table   => 'customer_metrics',
-        p_data_segment   => 'all',
-        p_lookback_hours => 2
+        p_target_table => 'customer_metrics',
+        p_data_segment => 'all'
     );
 
     perform capture_delta(

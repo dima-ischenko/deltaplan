@@ -1,6 +1,6 @@
 -- Delta on top of seed_volume.sql. Does not truncate or reload the base.
 --
--- Default: 7% of the customers already loaded. c_delta_mode is update
+-- Default: a percentage of the customers already loaded. c_delta_mode is update
 -- (only updates), insert (only new customers), or mix (half of each).
 -- Run it again to plant another slice. This script does not touch
 -- dpl_watermark. If run.sql has already stored one, planted rows get a
@@ -11,7 +11,7 @@
 
 do $seed$
 declare
-    c_delta_pct integer := 7;
+    c_delta_pct integer := 10;
     -- update | insert | mix
     c_delta_mode text := 'update';
 

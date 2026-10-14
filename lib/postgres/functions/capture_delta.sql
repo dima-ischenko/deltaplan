@@ -23,6 +23,10 @@ declare
     l_pk2      text;
     l_pk3      text;
     l_rows     bigint;
+    l_slice_rows bigint;
+    l_slice_pk   bigint;
+    l_min        timestamp;
+    l_max        timestamp;
 begin
     if to_regclass('dpl_session_tmp') is null then
         raise exception 'DP-20001 Call initialize first';
@@ -118,15 +122,42 @@ begin
 
     execute
         'insert into dpl_keys_tmp (
-            target_table, data_segment, source_table,
-            pk_1, pk_2, pk_3, watermark
+            source_table, pk_1, pk_2, pk_3, watermark
         )
-        select $2, $3, $4, s.pk_1, ' || l_pk2 || ', ' || l_pk3 || ', s.watermark
+        select $2, s.pk_1, ' || l_pk2 || ', ' || l_pk3 || ', s.watermark
         from (' || l_sql || ') s'
-        using l_bound, l_target, l_segment, l_source;
+        using l_bound, l_source;
 
     get diagnostics l_rows = row_count;
-    raise notice 'capture_delta: % | source=% stored=% bound=%',
-        l_rows, l_source, l_stored, l_bound;
+
+    if _debug() then
+        select coalesce(sum(cnt), 0),
+               min(min_wm),
+               max(max_wm),
+               count(*)
+        into l_slice_rows, l_min, l_max, l_slice_pk
+        from (
+            select count(*) cnt,
+                   min(watermark) min_wm,
+                   max(watermark) max_wm
+            from dpl_keys_tmp
+            where source_table = l_source
+            group by pk_1, pk_2, pk_3
+        ) s;
+        perform _log(
+            'capture_delta',
+            l_rows,
+            format(
+                'source=%s stored=%s bound=%s inserted=%s slice_rows=%s slice_pk=%s min=%s max=%s',
+                l_source, l_stored, l_bound, l_rows, l_slice_rows, l_slice_pk, l_min, l_max
+            )
+        );
+    else
+        perform _log(
+            'capture_delta',
+            l_rows,
+            format('source=%s stored=%s bound=%s', l_source, l_stored, l_bound)
+        );
+    end if;
 end;
 $$;

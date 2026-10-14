@@ -7,17 +7,19 @@ create or replace package pkg_dpl is
     procedure initialize(
         p_target_table    varchar2,
         p_data_segment    varchar2 default 'all',
-        p_lookback_hours  number   default 0
+        p_lookback_hours  number   default 0,
+        p_debug           boolean  default false
     );
 
+    -- For capture and refresh SQL. Package variables are not visible in SQL.
     function get_target_table return varchar2;
-
     function get_data_segment return varchar2;
-
-    function get_lookback_hours return number;
 
     -- The number of the batch that is open, or null when none is.
     function get_batch_no return number;
+
+    -- Write each log line to dpl_log. Off by default.
+    procedure set_log_table(p_enabled boolean default true);
 
     -- A null p_lookback_hours takes the value given to initialize.
     -- p_sql must contain :since exactly once.
@@ -32,8 +34,9 @@ create or replace package pkg_dpl is
     -- Batches are optional. The target calculation is ordinary SQL.
     --
     -- Without batches it reads every key from dpl_keys_tmp
-    -- (target_table = get_target_table and data_segment = get_data_segment)
     -- and finalize is called immediately afterwards.
+    -- The table holds only the current run. Target and segment
+    -- in SQL are get_target_table and get_data_segment.
     --
     -- With batches: prepare_batches, then the loop
     -- next_batch / SQL against dpl_batch_tmp / finish_batch.

@@ -13,15 +13,16 @@ On Oracle the entry point is `pkg_dpl`. On PostgreSQL the same names are functio
 
 A run is `initialize` -> `capture_delta` per source -> refresh SQL -> `finalize`. Batches are optional: `prepare_batches`, then `next_batch` / refresh / `finish_batch`.
 
-### initialize(p_target_table, p_data_segment, p_lookback_hours)
+### initialize(p_target_table, p_data_segment, p_lookback_hours, p_debug)
 
-Starts a run and clears keys of this target and segment.
+Starts a run and clears `dpl_keys_tmp`.
 
 | Parameter | Required | Default | Effect |
 | --- | --- | --- | --- |
 | `p_target_table` | yes | — | Target being loaded. |
 | `p_data_segment` | no | `'all'` | Independent watermark slice of this target. |
 | `p_lookback_hours` | no | `0` | Hours subtracted from the stored watermark when binding `:since`. Fractions allowed. `0` binds the stored watermark. Not written to `dpl_watermark`. |
+| `p_debug` | no | `false` | Extra diagnostic queries (slice stats on capture, pk counts on finalize). Does not change what the run writes. |
 
 ### capture_delta(p_source_table, p_sql, p_lookback_hours)
 
@@ -68,12 +69,13 @@ No parameters. Return `null` when no run is open.
 
 | Method | Returns |
 | --- | --- |
-| `get_target_table()` | Target of the current run. |
+| `get_target_table()` | Target of the current run. Use it in capture and refresh SQL. |
 | `get_data_segment()` | Segment of the current run. Use it in capture and refresh SQL. |
-| `get_lookback_hours()` | Lookback passed to `initialize`. |
 | `get_batch_no()` | Open batch number, or `null`. |
 
-Without batches the refresh reads `dpl_keys_tmp` where `target_table = get_target_table` and `data_segment = get_data_segment`. With batches it reads `dpl_batch_tmp`. A key from several sources is assigned to one batch.
+`set_log_table([true])` / `set_log_table(false)` writes each step to `dpl_log`. Off by default. `dbms_output` / notices still print. On Oracle the insert is an autonomous transaction, so a rollback of the run keeps the log. PostgreSQL and Greenplum have no analog: the row lives in the caller's transaction.
+
+Without batches the refresh reads `dpl_keys_tmp`. The table holds only the current run; target and segment are session state (`get_target_table`, `get_data_segment`). With batches the refresh reads `dpl_batch_tmp`. A key from several sources is assigned to one batch.
 
 ## Tables
 
@@ -87,16 +89,26 @@ Same names and column order on Oracle and PostgreSQL.
 | `watermark` | Greatest source value fully applied |
 | `updated_at` | Time of the last `finalize` write |
 
-`dpl_keys_tmp` holds every key of the current run. Rows survive a commit and last until the session ends.
+`dpl_keys_tmp` holds every key of the current run. Rows survive a commit and last until the session ends. Target and segment are session state, not columns.
 
 | Column | Meaning |
 | --- | --- |
-| `target_table`, `data_segment`, `source_table` | Same grain as `dpl_watermark` |
+| `source_table` | Source that produced this key. `finalize` advances one watermark per source |
 | `pk_1`, `pk_2`, `pk_3` | Business key of the target row |
 | `watermark` | Source value of this key |
 | `batch_no`, `batch_done` | Set by `prepare_batches`. `batch_done` becomes `1` after `finish_batch` |
 
 `dpl_batch_tmp` holds `pk_1`, `pk_2`, `pk_3` of the open batch. A commit empties it.
+
+`dpl_log` is permanent. Rows are appended only when `set_log_table` is on.
+
+| Column | Meaning |
+| --- | --- |
+| `logged_at` | Time of the step |
+| `proc_name` | `initialize`, `capture_delta`, ... (Oracle prefixes `pkg_dpl.`) |
+| `target_table`, `data_segment`, `batch_no` | Session state at that step |
+| `log_rows` | Row count of the step |
+| `message` | Same text as the notice / `dbms_output` line |
 
 ## Data segments
 

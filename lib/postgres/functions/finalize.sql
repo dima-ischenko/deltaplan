@@ -41,8 +41,6 @@ begin
         from (
             select source_table, max(watermark) as watermark
             from dpl_keys_tmp
-            where target_table = l_target
-              and data_segment = l_segment
             group by source_table
         ) s
         order by s.source_table
@@ -68,12 +66,18 @@ begin
             where dpl_watermark.watermark < excluded.watermark;
 
         l_sources := l_sources + 1;
-        raise notice 'finalize: source=% stored=% captured=% effective=%',
-            r.source_table, l_old, r.watermark, l_effective;
+        perform _log(
+            'finalize',
+            0,
+            format(
+                'source=%s stored=%s captured=%s effective=%s',
+                r.source_table, l_old, r.watermark, l_effective
+            )
+        );
     end loop;
 
     if l_sources = 0 then
-        raise notice 'finalize: no delta, watermarks unchanged';
+        perform _log('finalize', 0, 'no delta, watermarks unchanged');
     end if;
 
     delete from dpl_batch_tmp;

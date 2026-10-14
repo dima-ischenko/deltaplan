@@ -6,8 +6,8 @@ begin
     pkg_dpl_test.reset;
     pkg_dpl_test.add_row('inc_test_a', 'a', 10, pkg_dpl_test.c_t1);
     pkg_dpl_test.add_row('inc_test_a', 'b', 20, pkg_dpl_test.c_t1);
-    pkg_dpl_test.add_row('inc_test_b', 'b', 3, pkg_dpl_test.c_t1);
-    pkg_dpl_test.add_row('inc_test_b', 'c', 4, pkg_dpl_test.c_t1);
+    pkg_dpl_test.add_row('inc_test_b', 'b', 3, pkg_dpl_test.c_t1b);
+    pkg_dpl_test.add_row('inc_test_b', 'c', 4, pkg_dpl_test.c_t1b);
     pkg_dpl_test.capture_both;
     pkg_dpl_test.merge_all;
     pkg_dpl.finalize;

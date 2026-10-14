@@ -46,9 +46,11 @@ create or replace procedure dpl_test.reset()
 language plpgsql as $$
 begin
     set search_path = pg_temp, lib, public;
+    perform set_log_table(false);
     perform initialize('inc_test_tgt', 'all', 0);
     delete from dpl_keys_tmp;
     delete from dpl_batch_tmp;
+    delete from dpl_log;
     delete from dpl_watermark
     where target_table in ('inc_test_tgt', 'other_tgt');
     delete from inc_test_a;
@@ -107,8 +109,6 @@ begin
         from dpl_keys_tmp k
         left join inc_test_a a on a.id = k.pk_1
         left join inc_test_b b on b.id = k.pk_1
-        where k.target_table = get_target_table()
-          and k.data_segment = get_data_segment()
         group by k.pk_1
     ) s
     where t.id = s.id;
@@ -121,8 +121,6 @@ begin
         from dpl_keys_tmp k
         left join inc_test_a a on a.id = k.pk_1
         left join inc_test_b b on b.id = k.pk_1
-        where k.target_table = get_target_table()
-          and k.data_segment = get_data_segment()
         group by k.pk_1
     ) s
     where not exists (
@@ -176,8 +174,6 @@ begin
     from (
         select distinct pk_1, pk_2, pk_3
         from dpl_keys_tmp
-        where target_table = 'inc_test_tgt'
-          and data_segment = 'all'
     ) k;
     return l_cnt::text;
 end;
