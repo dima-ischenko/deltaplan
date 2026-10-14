@@ -101,6 +101,6 @@ $run$;
 
 The same script is `demo/postgres/run.sql`. See [`demo/README.md`](../../demo/README.md).
 
-The functions do not commit. Commit after each `finish_batch` and after `finalize`. A rollback of `initialize` drops the session temp tables.
+The functions do not commit. Commit after each `finish_batch` and after `finalize`. A rollback of `initialize` drops the session temp tables. The run lock is session-scoped and survives that rollback until `finalize` or disconnect.
 
 On Greenplum 7 the same [deploy](deploy.md) is used. Pass `p_merged` to `finish_batch` when the log should show the refresh row count.

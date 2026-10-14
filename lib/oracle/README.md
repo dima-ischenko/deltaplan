@@ -101,3 +101,5 @@ end;
 The same script is `demo/oracle/run.sql`. See [`demo/README.md`](../../demo/README.md).
 
 `finish_batch` commits when `p_commit_batch` is true (the default). `finalize` does not. Commit after `finalize` to store the watermark. `p_commit_batch => false` keeps the whole run in one transaction.
+
+`initialize` holds a `DBMS_LOCK` on the target and segment until `finalize`. Grant it once: [deploy.md](deploy.md).

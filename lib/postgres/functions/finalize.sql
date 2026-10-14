@@ -70,6 +70,8 @@ begin
   end if;
 
   delete from dpl_batch_tmp;
+  perform _release_run_lock(l_target, l_segment);
+
   update dpl_session_tmp
   set target_table = null,
     data_segment = null,

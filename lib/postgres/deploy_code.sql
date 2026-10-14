@@ -9,6 +9,7 @@
 \i lib/postgres/functions/_unfinished.sql
 \i lib/postgres/functions/_unassigned.sql
 \i lib/postgres/functions/_batch_total.sql
+\i lib/postgres/functions/_run_lock.sql
 \i lib/postgres/functions/initialize.sql
 \i lib/postgres/functions/capture_delta.sql
 \i lib/postgres/functions/prepare_batches.sql

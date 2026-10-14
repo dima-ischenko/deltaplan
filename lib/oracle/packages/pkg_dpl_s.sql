@@ -4,6 +4,8 @@ create or replace package pkg_dpl is
   -- The source SQL keeps a strict predicate: value > :since.
   -- Zero leaves the bound equal to the stored watermark.
   -- dpl_watermark receives the watermark itself; the lookback offset is not stored.
+  -- Exclusive named DBMS_LOCK on (target, segment). Another session gets -20021.
+  -- The lock survives commit and is released in finalize, or when the session ends.
   procedure initialize(
       p_target_table    varchar2,
       p_data_segment    varchar2 default 'all',
@@ -64,9 +66,9 @@ create or replace package pkg_dpl is
   -- The log line records sql%rowcount of the preceding DML, so call this immediately after it.
   procedure finish_batch;
 
-  -- Advances dpl_watermark from dpl_keys_tmp and clears the session.
-  -- Does not commit. Refuses while a batch is still unfinished,
-  -- and does not roll that error back.
+  -- Advances dpl_watermark from dpl_keys_tmp, releases the run lock,
+  -- and clears the session. Does not commit. Refuses while a batch is
+  -- still unfinished, and does not roll that error back.
   procedure finalize;
 
 end pkg_dpl;

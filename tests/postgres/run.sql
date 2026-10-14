@@ -26,6 +26,7 @@ where target_table in ('inc_test_tgt', 'other_tgt');
 \i tests/postgres/cases/debug_and_log.sql
 \i tests/postgres/cases/one_pk_one_batch.sql
 \i tests/postgres/cases/rollback_without_commit.sql
+\i tests/postgres/cases/run_lock.sql
 \i tests/postgres/cases/volume.sql
 
 do $$ begin raise notice 'dpl_test: passed'; end; $$;

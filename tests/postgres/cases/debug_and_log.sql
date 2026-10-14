@@ -19,8 +19,12 @@ begin
     call dpl_test.eq('log capture', case when l_n > 0 then 'y' else 'n' end, 'y');
     select count(*)::integer into l_n from dpl_log where proc_name = 'finalize';
     call dpl_test.eq('log finalize', case when l_n > 0 then 'y' else 'n' end, 'y');
+    select count(*)::integer into l_n from dpl_log where message like 'lock released name=%';
+    call dpl_test.eq('log lock released', case when l_n > 0 then 'y' else 'n' end, 'y');
 
     perform initialize('inc_test_tgt', 'all', 0, true);
+    select count(*)::integer into l_n from dpl_log where message like 'lock acquired name=%';
+    call dpl_test.eq('log lock acquired', case when l_n > 0 then 'y' else 'n' end, 'y');
     call dpl_test.capture_source('inc_test_a');
     call dpl_test.eq('debug keys', dpl_test.key_count(), '0');
     perform finalize();

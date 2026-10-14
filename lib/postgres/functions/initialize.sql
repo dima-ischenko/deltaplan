@@ -1,3 +1,4 @@
+-- Exclusive session lock on (target, segment). Another session gets DP-20021.
 create or replace function initialize(
     p_target_table    text,
     p_data_segment    text default 'all',
@@ -40,6 +41,8 @@ begin
     batch_size = null,
     batches_ready = false,
     debug = excluded.debug;
+
+  perform _acquire_run_lock(l_target, l_segment);
 
   delete from dpl_keys_tmp;
   get diagnostics l_rows = row_count;

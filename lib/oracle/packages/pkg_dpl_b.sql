@@ -11,6 +11,8 @@ gv_batches_ready   boolean := false;
 gv_output_ready    boolean := false;
 gv_debug           boolean := false;
 gv_log_table       boolean := false;
+gv_lockhandle      varchar2(128);
+gv_lockname        varchar2(128);
 
 c_w_proc   constant pls_integer := 26;
 c_w_name   constant pls_integer := 28;
@@ -239,6 +241,85 @@ begin
     end if;
 end set_log_table;
 
+-- Named lock, same idea as lock_utl: ALLOCATE_UNIQUE(name) then REQUEST(handle).
+-- REQUEST has no name overload. ALLOCATE_UNIQUE writes DBMS_LOCK_ALLOCATED;
+-- the autonomous commit keeps that out of the caller's transaction.
+function run_lock_name(p_target varchar2, p_segment varchar2) return varchar2 is
+begin
+    return substr('DPL|' || p_target || '|' || p_segment, 1, 128);
+end run_lock_name;
+
+function allocate_lock_handle(p_name varchar2) return varchar2 is
+    pragma autonomous_transaction;
+    l_handle varchar2(128);
+begin
+    dbms_lock.allocate_unique(p_name, l_handle);
+    commit;
+    return l_handle;
+end allocate_lock_handle;
+
+procedure acquire_run_lock(p_target varchar2, p_segment varchar2) is
+    l_name   varchar2(128) := run_lock_name(p_target, p_segment);
+    l_handle varchar2(128);
+    l_rc     number;
+    l_proc   varchar2(64) := get_proc_name('initialize');
+begin
+    if gv_lockname = l_name and gv_lockhandle is not null then
+        i_log(l_proc, 0, 'lock already held name=' || l_name);
+        return;
+    end if;
+
+    if gv_lockhandle is not null then
+        l_rc := dbms_lock.release(gv_lockhandle);
+        i_log(l_proc, 0, 'lock released name=' || gv_lockname);
+        gv_lockhandle := null;
+        gv_lockname := null;
+    end if;
+
+    l_handle := allocate_lock_handle(l_name);
+    l_rc := dbms_lock.request(
+        lockhandle        => l_handle,
+        lockmode          => dbms_lock.x_mode,
+        timeout           => 0,
+        release_on_commit => false
+    );
+
+    if l_rc not in (0, 4) then
+        i_log(l_proc, 0, 'lock busy name=' || l_name);
+        raise_application_error(
+            -20021,
+            'another run is active for ' || p_target || ' / ' || p_segment
+        );
+    end if;
+
+    gv_lockhandle := l_handle;
+    gv_lockname := l_name;
+    if l_rc = 4 then
+        i_log(l_proc, 0, 'lock already held name=' || l_name);
+    else
+        i_log(l_proc, 0, 'lock acquired name=' || l_name);
+    end if;
+end acquire_run_lock;
+
+procedure release_run_lock is
+    l_rc   number;
+    l_name varchar2(128) := gv_lockname;
+begin
+    if gv_lockhandle is null then
+        return;
+    end if;
+
+    begin
+        l_rc := dbms_lock.release(gv_lockhandle);
+    exception
+        when others then
+            null;
+    end;
+    gv_lockhandle := null;
+    gv_lockname := null;
+    i_log(get_proc_name('finalize'), 0, 'lock released name=' || l_name);
+end release_run_lock;
+
 function get_watermark(p_source_table varchar2) return date is
     l_result date;
 begin
@@ -278,6 +359,7 @@ begin
     begin
     gv_target_table := lower(p_target_table);
     gv_data_segment := lower(p_data_segment);
+    acquire_run_lock(gv_target_table, gv_data_segment);
     gv_lookback_hours := nvl(p_lookback_hours, 0);
     if p_debug then
         gv_debug := true;
@@ -762,6 +844,7 @@ begin
 
     delete from dpl_batch_tmp;
 
+    release_run_lock;
     gv_target_table := null;
     gv_data_segment := null;
     gv_lookback_hours := 0;

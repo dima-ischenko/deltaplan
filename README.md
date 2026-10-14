@@ -15,7 +15,7 @@ A run is `initialize` -> `capture_delta` per source -> refresh SQL -> `finalize`
 
 ### initialize(p_target_table, p_data_segment, p_lookback_hours, p_debug)
 
-Starts a run and clears `dpl_keys_tmp`.
+Starts a run and clears `dpl_keys_tmp`. Takes an exclusive session lock on `(target_table, data_segment)` so a second session cannot start the same slice. The lock survives `COMMIT` (including `finish_batch`) and is released in `finalize`, or when the session ends. Repeat `initialize` in the same session after a failure is allowed. A different `p_data_segment` of the same target can run in parallel.
 
 | Parameter | Required | Default | Effect |
 | --- | --- | --- | --- |
@@ -23,6 +23,8 @@ Starts a run and clears `dpl_keys_tmp`.
 | `p_data_segment` | no | `'all'` | Independent watermark slice of this target. |
 | `p_lookback_hours` | no | `0` | Hours subtracted from the stored watermark when binding `:since`. Fractions allowed. `0` binds the stored watermark. Not written to `dpl_watermark`. |
 | `p_debug` | no | `false` | Extra diagnostic queries (slice stats on capture, pk counts on finalize). Does not change what the run writes. |
+
+A second session that calls `initialize` for the same pair gets `DP-20021` / `-20021`.
 
 ### capture_delta(p_source_table, p_sql, p_lookback_hours)
 

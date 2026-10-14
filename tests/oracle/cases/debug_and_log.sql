@@ -16,8 +16,12 @@ begin
     pkg_dpl_test.eq('log capture', case when l_n > 0 then 'y' else 'n' end, 'y');
     select count(*) into l_n from dpl_log where proc_name = 'pkg_dpl.finalize';
     pkg_dpl_test.eq('log finalize', case when l_n > 0 then 'y' else 'n' end, 'y');
+    select count(*) into l_n from dpl_log where message like 'lock released name=%';
+    pkg_dpl_test.eq('log lock released', case when l_n > 0 then 'y' else 'n' end, 'y');
 
     pkg_dpl.initialize(pkg_dpl_test.c_target, 'all', 0, true);
+    select count(*) into l_n from dpl_log where message like 'lock acquired name=%';
+    pkg_dpl_test.eq('log lock acquired', case when l_n > 0 then 'y' else 'n' end, 'y');
     pkg_dpl_test.capture_source('inc_test_a');
     pkg_dpl_test.eq('debug keys', pkg_dpl_test.key_count, '0');
     pkg_dpl.finalize;
