@@ -12,7 +12,7 @@ sqlplus user/password@//host:1521/service @lib/oracle/rollback.sql
 `initialize` uses `DBMS_LOCK`. As a DBA, once per schema:
 
 ```bash
-sqlplus system/password@//host:1521/service @lib/oracle/grant_lock.sql SCHEMA
+sqlplus sys/password@//host:1521/service as sysdba @lib/oracle/grant_lock.sql SCHEMA
 ```
 
 How to call the package: [README.md](README.md).
