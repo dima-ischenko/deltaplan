@@ -15,7 +15,7 @@ declare
     l_target    text;
     l_size      numeric;
     l_assigned  boolean;
-    l_keys      bigint;
+    l_has_keys  boolean;
     l_updated   bigint;
     l_open_rows boolean;
     l_batch_no  numeric;
@@ -50,20 +50,15 @@ begin
         raise exception 'DP-20019 batch % lost its keys; call initialize', l_batch_no;
     end if;
 
-    select count(*)
-    into l_keys
-    from (
-        select distinct pk_1, pk_2, pk_3
-        from dpl_keys_tmp
-    ) k;
+    select exists (select 1 from dpl_keys_tmp) into l_has_keys;
 
     update dpl_session_tmp
     set batches_ready = true,
         batch_no = null,
-        batch_size = case when l_keys = 0 then batch_size else p_batch_size end
+        batch_size = case when l_has_keys then p_batch_size else batch_size end
     where id = 1;
 
-    if l_keys = 0 then
+    if not l_has_keys then
         perform _log('prepare_batches', 0, 'no keys, nothing to apply');
         return;
     end if;
@@ -95,12 +90,12 @@ begin
         perform _log(
             'prepare_batches',
             l_updated,
-            format('assigned batch_no batch_size=%s distinct_pk=%s', p_batch_size, l_keys)
+            format('assigned batch_no batch_size=%s', p_batch_size)
         );
     else
         perform _log(
             'prepare_batches',
-            l_keys,
+            0,
             format('batch numbers already assigned batch_size=%s', l_size)
         );
     end if;

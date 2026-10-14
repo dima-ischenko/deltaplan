@@ -62,7 +62,11 @@ begin
         raise exception 'DP-20002 lookback_hours must be >= 0';
     end if;
 
-    if l_ready or _unfinished() > 0 then
+    if l_ready then
+        raise exception 'DP-20013 capture_delta is closed after prepare_batches until finalize';
+    end if;
+
+    if _unfinished() > 0 then
         raise exception 'DP-20013 capture_delta is closed after prepare_batches until finalize';
     end if;
 

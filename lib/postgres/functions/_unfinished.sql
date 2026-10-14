@@ -3,14 +3,15 @@ create or replace function _unfinished()
 returns integer
 language plpgsql stable
 set search_path = pg_temp, :"dpl_schema", public as $$
-declare
-    l_left integer;
 begin
-    select count(distinct batch_no)::integer
-    into l_left
-    from dpl_keys_tmp
-    where batch_no is not null
-      and batch_done = 0;
-    return l_left;
+    if exists (
+        select 1
+        from dpl_keys_tmp
+        where batch_no is not null
+          and batch_done = 0
+    ) then
+        return 1;
+    end if;
+    return 0;
 end;
 $$;

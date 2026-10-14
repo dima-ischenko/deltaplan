@@ -33,10 +33,6 @@ begin
         raise exception 'DP-20019 batch % lost its keys; call initialize', l_batch_no;
     end if;
 
-    if _unfinished() = 0 then
-        return false;
-    end if;
-
     select min(batch_no)
     into l_next
     from dpl_keys_tmp
@@ -72,7 +68,7 @@ begin
     perform _log(
         'next_batch',
         l_keys,
-        format('batch %s/%s opened', l_next, _batch_total())
+        format('batch %s opened', l_next)
     );
     return true;
 end;

@@ -161,11 +161,12 @@ create or replace package body pkg_dpl is
     function unfinished_batches return number is
         l_left number;
     begin
-        select count(distinct batch_no)
+        select count(*)
         into l_left
         from dpl_keys_tmp
         where batch_no is not null
-          and batch_done = 0;
+          and batch_done = 0
+          and rownum = 1;
 
         return l_left;
     end unfinished_batches;
@@ -361,7 +362,11 @@ create or replace package body pkg_dpl is
             raise_application_error(-20002, 'lookback_hours must be >= 0');
         end if;
 
-        if gv_batches_ready or unfinished_batches > 0 then
+        if gv_batches_ready then
+            raise_application_error(-20013, 'capture_delta is closed after prepare_batches until finalize');
+        end if;
+
+        if unfinished_batches > 0 then
             raise_application_error(-20013, 'capture_delta is closed after prepare_batches until finalize');
         end if;
 
@@ -479,14 +484,16 @@ create or replace package body pkg_dpl is
             raise_application_error(-20003, 'batch_size must be a positive integer');
         end if;
 
-        select count(*),
-               nvl(max(assigned_flag), 0)
-        into l_key_total, l_assigned
-        from (
-            select max(case when batch_no is not null then 1 else 0 end) assigned_flag
-            from dpl_keys_tmp
-            group by pk_1, pk_2, pk_3
-        );
+        select count(*)
+        into l_key_total
+        from dpl_keys_tmp
+        where rownum = 1;
+
+        select count(*)
+        into l_assigned
+        from dpl_keys_tmp
+        where batch_no is not null
+          and rownum = 1;
 
         if l_assigned > 0 and gv_batch_size is not null and l_batch_size != gv_batch_size then
             raise_application_error(
@@ -547,25 +554,23 @@ create or replace package body pkg_dpl is
                     l_proc_name,
                     sql%rowcount,
                     'assigned batch_no batch_size=' || l_batch_size
-                    || ' distinct_pk=' || l_key_total
                     || case when l_commit_batch then ' commit_batch' else ' no_commit' end
                 );
             else
                 i_log(
                     l_proc_name,
-                    l_key_total,
+                    0,
                     'batch numbers already assigned batch_size=' || gv_batch_size
                     || case when l_commit_batch then ' commit_batch' else ' no_commit' end
                 );
             end if;
 
-            select count(distinct batch_no),
-                   count(distinct case when batch_done = 0 then batch_no end)
-            into l_total, l_left
-            from dpl_keys_tmp
-            where batch_no is not null;
+            select nvl(max(batch_no), 0)
+            into l_total
+            from dpl_keys_tmp;
 
             gv_batch_total := l_total;
+            l_left := unfinished_batches;
 
             if l_left = 0 then
                 i_log(l_proc_name, 0, 'nothing left to apply batches=' || l_total);
@@ -690,26 +695,23 @@ create or replace package body pkg_dpl is
         l_proc_name  varchar2(64) := get_proc_name('finalize');
         l_started    timestamp := systimestamp;
         l_all_pk     number := 0;
-        l_sources    number := 0;
         l_left       number := 0;
         l_unassigned number := 0;
         l_moved      number := 0;
     begin
         assert_ready;
 
-        l_left := unfinished_batches;
         if gv_batches_ready then
+            l_left := unfinished_batches;
             select count(*)
             into l_unassigned
             from dpl_keys_tmp
             where batch_no is null
               and rownum = 1;
-        else
-            l_unassigned := 0;
         end if;
 
         if l_left > 0
-           or (gv_batches_ready and l_unassigned > 0) then
+           or l_unassigned > 0 then
             raise_application_error(
                 -20005,
                 'unfinished batches for ' || gv_target_table
@@ -720,6 +722,28 @@ create or replace package body pkg_dpl is
 
         gv_batches_ready := false;
 
+        merge into dpl_watermark t
+        using (
+            select gv_target_table as target_table,
+                   gv_data_segment as data_segment,
+                   source_table,
+                   max(watermark) as watermark
+            from dpl_keys_tmp
+            group by source_table
+        ) s
+        on (t.target_table = s.target_table
+            and t.data_segment = s.data_segment
+            and t.source_table = s.source_table)
+        when matched then
+            update set t.watermark = s.watermark,
+                       t.updated_at = sysdate
+            where t.watermark < s.watermark
+        when not matched then
+            insert (target_table, data_segment, source_table, watermark, updated_at)
+            values (s.target_table, s.data_segment, s.source_table, s.watermark, sysdate);
+
+        l_moved := sql%rowcount;
+
         if gv_debug then
             select count(*)
             into l_all_pk
@@ -729,45 +753,10 @@ create or replace package body pkg_dpl is
             );
         end if;
 
-        select count(*)
-        into l_sources
-        from (
-            select source_table
-            from dpl_keys_tmp
-            group by source_table
-        );
-
-        if l_sources = 0 then
-            i_log(l_proc_name, 0, 'no delta, watermarks unchanged');
-        else
-            merge into dpl_watermark t
-            using (
-                select gv_target_table as target_table,
-                       gv_data_segment as data_segment,
-                       source_table,
-                       max(watermark) as watermark
-                from dpl_keys_tmp
-                group by source_table
-            ) s
-            on (t.target_table = s.target_table
-                and t.data_segment = s.data_segment
-                and t.source_table = s.source_table)
-            when matched then
-                update set t.watermark = s.watermark,
-                           t.updated_at = sysdate
-                where t.watermark < s.watermark
-            when not matched then
-                insert (target_table, data_segment, source_table, watermark, updated_at)
-                values (s.target_table, s.data_segment, s.source_table, s.watermark, sysdate);
-
-            l_moved := sql%rowcount;
-        end if;
-
         i_log(
             l_proc_name,
-            l_sources,
-            'sources=' || l_sources
-            || ' moved=' || l_moved
+            l_moved,
+            'moved=' || l_moved
             || case when gv_debug then ' distinct_pk=' || l_all_pk else null end
             || ' ' || fmt_num(round(seconds_since(l_started), 3)) || 's'
         );
