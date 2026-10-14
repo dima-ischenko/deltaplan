@@ -1,5 +1,4 @@
 -- Append-only log of dpl steps. Written only when set_log_table is on.
--- Column order matches the Oracle table. See lib/oracle/ddl_dml/dpl_log.sql.
 do $ddl$
 declare
     l_distributed text := '';

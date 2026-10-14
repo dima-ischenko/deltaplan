@@ -3,9 +3,9 @@ returns void
 language plpgsql
 set search_path = pg_temp, :"dpl_schema", public as $$
 begin
-    perform _ensure_temp();
-    insert into dpl_session_tmp (id, log_table)
-    values (1, p_enabled is true)
-    on conflict (id) do update set log_table = excluded.log_table;
+  perform _ensure_temp();
+  insert into dpl_session_tmp (id, log_table)
+  values (1, p_enabled is true)
+  on conflict (id) do update set log_table = excluded.log_table;
 end;
 $$;

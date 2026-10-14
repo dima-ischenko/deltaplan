@@ -1,23 +1,9 @@
--- dpl for PostgreSQL, and for Greenplum 7.
--- The routines are functions. They do not commit: versions without
--- procedures, and Greenplum releases that forbid a commit inside a
--- function, can run this file. The caller commits.
---
--- The script does not use MERGE: Greenplum has none. A refresh statement is
--- an UPDATE and an INSERT, or INSERT ... ON CONFLICT where the server has it.
---
 -- Objects are created in the current schema. deploy.sql selects it.
 -- initialize creates the temporary tables dpl_keys_tmp and dpl_batch_tmp.
--- Their names match the Oracle installation, so the refresh statement can
--- read them unqualified.
--- dpl_watermark is permanent and holds the watermark.
--- dpl_log is permanent. set_log_table writes to it; it stays empty by default.
--- Column order matches the Oracle tables. See lib/oracle/ddl_dml/dpl_keys_tmp.sql.
---
--- PostgreSQL keeps session flags, including target and segment, in
--- dpl_session_tmp, also temporary. dpl_keys_tmp does not repeat those columns.
--- If the transaction that called initialize is rolled back, the temporary
--- tables go with it. Call initialize again.
+-- dpl_watermark and dpl_log are permanent. set_log_table writes to dpl_log;
+-- it stays empty by default.
+-- Session flags live in dpl_session_tmp. If the transaction that called
+-- initialize is rolled back, the temporary tables go with it.
 
 -- Older installs used procedures, and a few signatures have changed.
 -- DROP PROCEDURE on a function of the same name raises, so drop the functions first.

@@ -12,97 +12,97 @@ returns void
 language plpgsql
 set search_path = pg_temp, :"dpl_schema", public as $$
 declare
-    l_target    text;
-    l_size      numeric;
-    l_assigned  boolean;
-    l_has_keys  boolean;
-    l_updated   bigint;
-    l_open_rows boolean;
-    l_batch_no  numeric;
+l_target    text;
+l_size      numeric;
+l_assigned  boolean;
+l_has_keys  boolean;
+l_updated   bigint;
+l_open_rows boolean;
+l_batch_no  numeric;
 begin
-    select target_table, batch_size, batch_no
-    into l_target, l_size, l_batch_no
-    from dpl_session_tmp
-    where id = 1;
+  select target_table, batch_size, batch_no
+  into l_target, l_size, l_batch_no
+  from dpl_session_tmp
+  where id = 1;
 
-    if l_target is null then
-        raise exception 'DP-20001 Call initialize first';
-    end if;
-    if p_batch_size is null or p_batch_size < 1 or p_batch_size <> trunc(p_batch_size) then
-        raise exception 'DP-20003 batch_size must be a positive integer';
-    end if;
+  if l_target is null then
+    raise exception 'DP-20001 Call initialize first';
+  end if;
+  if p_batch_size is null or p_batch_size < 1 or p_batch_size <> trunc(p_batch_size) then
+    raise exception 'DP-20003 batch_size must be a positive integer';
+  end if;
 
-    select exists (
-        select 1
+  select exists (
+    select 1
+    from dpl_keys_tmp
+    where batch_no is not null
+  ) into l_assigned;
+
+  if l_assigned and l_size is not null and p_batch_size <> l_size then
+    raise exception 'DP-20009 batch_size cannot change while batches are in progress, current=%', l_size;
+  end if;
+
+  if l_batch_no is not null then
+    select exists (select 1 from dpl_batch_tmp) into l_open_rows;
+    if l_open_rows then
+      raise exception 'DP-20014 batch % is open; call finish_batch', l_batch_no;
+    end if;
+    raise exception 'DP-20019 batch % lost its keys; call initialize', l_batch_no;
+  end if;
+
+  select exists (select 1 from dpl_keys_tmp) into l_has_keys;
+
+  update dpl_session_tmp
+  set batches_ready = true,
+    batch_no = null,
+    batch_size = case when l_has_keys then p_batch_size else batch_size end
+  where id = 1;
+
+  if not l_has_keys then
+    perform _log('prepare_batches', 0, 'no keys, nothing to apply');
+    return;
+  end if;
+
+  if not l_assigned then
+    update dpl_keys_tmp t
+    set batch_no = s.batch_no,
+      batch_done = 0
+    from (
+      select pk_1, pk_2, pk_3,
+         ceil(row_number() over (
+           order by pk_1, pk_2 nulls first, pk_3 nulls first
+         )::numeric / p_batch_size) as batch_no
+      from (
+        select distinct pk_1, pk_2, pk_3
         from dpl_keys_tmp
-        where batch_no is not null
-    ) into l_assigned;
+      ) d
+    ) s
+    where t.pk_1 = s.pk_1
+     and t.pk_2 is not distinct from s.pk_2
+     and t.pk_3 is not distinct from s.pk_3
+     and t.batch_no is null;
 
-    if l_assigned and l_size is not null and p_batch_size <> l_size then
-        raise exception 'DP-20009 batch_size cannot change while batches are in progress, current=%', l_size;
+    get diagnostics l_updated = row_count;
+    if l_updated = 0 then
+      raise exception 'DP-20011 batch numbers were not assigned';
     end if;
 
-    if l_batch_no is not null then
-        select exists (select 1 from dpl_batch_tmp) into l_open_rows;
-        if l_open_rows then
-            raise exception 'DP-20014 batch % is open; call finish_batch', l_batch_no;
-        end if;
-        raise exception 'DP-20019 batch % lost its keys; call initialize', l_batch_no;
-    end if;
+    perform _log(
+      'prepare_batches',
+      l_updated,
+      format('assigned batch_no batch_size=%s', p_batch_size)
+    );
+  else
+    perform _log(
+      'prepare_batches',
+      0,
+      format('batch numbers already assigned batch_size=%s', l_size)
+    );
+  end if;
 
-    select exists (select 1 from dpl_keys_tmp) into l_has_keys;
-
-    update dpl_session_tmp
-    set batches_ready = true,
-        batch_no = null,
-        batch_size = case when l_has_keys then p_batch_size else batch_size end
-    where id = 1;
-
-    if not l_has_keys then
-        perform _log('prepare_batches', 0, 'no keys, nothing to apply');
-        return;
-    end if;
-
-    if not l_assigned then
-        update dpl_keys_tmp t
-        set batch_no = s.batch_no,
-            batch_done = 0
-        from (
-            select pk_1, pk_2, pk_3,
-                   ceil(row_number() over (
-                       order by pk_1, pk_2 nulls first, pk_3 nulls first
-                   )::numeric / p_batch_size) as batch_no
-            from (
-                select distinct pk_1, pk_2, pk_3
-                from dpl_keys_tmp
-            ) d
-        ) s
-        where t.pk_1 = s.pk_1
-          and t.pk_2 is not distinct from s.pk_2
-          and t.pk_3 is not distinct from s.pk_3
-          and t.batch_no is null;
-
-        get diagnostics l_updated = row_count;
-        if l_updated = 0 then
-            raise exception 'DP-20011 batch numbers were not assigned';
-        end if;
-
-        perform _log(
-            'prepare_batches',
-            l_updated,
-            format('assigned batch_no batch_size=%s', p_batch_size)
-        );
-    else
-        perform _log(
-            'prepare_batches',
-            0,
-            format('batch numbers already assigned batch_size=%s', l_size)
-        );
-    end if;
-
-    if _unfinished() = 0 then
-        perform _log('prepare_batches', 0, 'nothing left to apply');
-        return;
-    end if;
+  if _unfinished() = 0 then
+    perform _log('prepare_batches', 0, 'nothing left to apply');
+    return;
+  end if;
 end;
 $$;
