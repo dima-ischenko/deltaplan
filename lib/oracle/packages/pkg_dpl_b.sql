@@ -52,31 +52,6 @@ begin
          + extract(second from l_delta);
 end seconds_since;
 
-procedure i_log(p_proc_name varchar2,
-                p_rows      number,
-                p_text      varchar2 default null) is
-begin
-    if not gv_output_ready then
-        dbms_output.enable(buffer_size => null);
-        gv_output_ready := true;
-    end if;
-
-    dbms_output.put_line(
-        to_char(systimestamp, 'hh24:mi:ss.ff3') || ' '
-        || rpad(p_proc_name || ':', c_w_proc)
-        || rpad(p_rows, 16) || '| '
-        || p_text
-    );
-
-    if gv_log_table then
-        write_log_row(
-            p_proc_name,
-            p_rows,
-            p_text
-        );
-    end if;
-end i_log;
-
 procedure write_log_row(
     p_proc_name varchar2,
     p_rows      number,
@@ -103,6 +78,31 @@ begin
     );
     commit;
 end write_log_row;
+
+procedure i_log(p_proc_name varchar2,
+                p_rows      number,
+                p_text      varchar2 default null) is
+begin
+    if not gv_output_ready then
+        dbms_output.enable(buffer_size => null);
+        gv_output_ready := true;
+    end if;
+
+    dbms_output.put_line(
+        to_char(systimestamp, 'hh24:mi:ss.ff3') || ' '
+        || rpad(p_proc_name || ':', c_w_proc)
+        || rpad(p_rows, 16) || '| '
+        || p_text
+    );
+
+    if gv_log_table then
+        write_log_row(
+            p_proc_name,
+            p_rows,
+            p_text
+        );
+    end if;
+end i_log;
 
 procedure assert_ready is
 begin
