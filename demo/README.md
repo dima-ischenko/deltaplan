@@ -2,7 +2,7 @@
 
 Scripts that load `customer_metrics` from three sources. Deploy first: [Oracle](../lib/oracle/deploy.md) or [PostgreSQL](../lib/postgres/deploy.md).
 
-`run.sql` is the incremental load. Seed scripts load source rows only; `run.sql` writes `dpl_watermark` after it computes `customer_metrics`. Start from the repository root.
+`run.sql` is the incremental load. Seed scripts load source rows only; `run.sql` writes `dwv_watermark` after it computes `customer_metrics`. Start from the repository root.
 
 ## Oracle
 
@@ -47,7 +47,7 @@ sqlplus test/test_pass@//localhost:1522/FREEPDB1
 
 ## PostgreSQL
 
-Put the install schema on `search_path`. After `lib/postgres/deploy.sql` that schema is `lib` unless you passed `dpl_schema`.
+Put the install schema on `search_path`. After `lib/postgres/deploy.sql` that schema is `lib` unless you passed `dwv_schema`.
 
 ```text
 psql "postgresql://user:password@localhost:5432/db"

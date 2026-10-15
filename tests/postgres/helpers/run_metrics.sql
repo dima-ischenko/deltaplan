@@ -1,6 +1,6 @@
 -- Load of customer_metrics for metrics_* cases.
--- p_batch_size null = one statement on dpl_keys_tmp.
--- A positive size uses prepare_batches / dpl_batch_tmp.
+-- p_batch_size null = one statement on dwv_keys_tmp.
+-- A positive size uses prepare_batches / dwv_batch_tmp.
 
 drop table if exists customer_metrics_inc;
 
@@ -13,14 +13,14 @@ create table customer_metrics_inc (
     cnt_completed numeric
 );
 
-create or replace procedure dpl_test.seed_customer_metrics()
+create or replace procedure dwv_test.seed_customer_metrics()
 language plpgsql as $$
 begin
     delete from order_items;
     delete from orders;
     delete from customers;
     delete from customer_metrics;
-    delete from dpl_watermark
+    delete from dwv_watermark
     where target_table = 'customer_metrics';
 
     insert into customers (id, name, region, updated_at) values
@@ -43,7 +43,7 @@ begin
 end;
 $$;
 
-create or replace procedure dpl_test.seed_customer_delta()
+create or replace procedure dwv_test.seed_customer_delta()
 language plpgsql as $$
 declare
     l_as_of        timestamp := clock_timestamp();
@@ -54,9 +54,9 @@ declare
 begin
     select max(watermark)
     into l_wm
-    from dpl_watermark
+    from dwv_watermark
     where target_table = 'customer_metrics'
-      and data_segment = 'all';
+      and data_slice = 'all';
 
     if l_wm is not null and l_as_of <= l_wm then
         l_as_of := l_wm + interval '1 second';
@@ -111,7 +111,7 @@ begin
 end;
 $$;
 
-create or replace procedure dpl_test.run_customer_metrics(p_batch_size integer default null)
+create or replace procedure dwv_test.run_customer_metrics(p_batch_size integer default null)
 language plpgsql
 set search_path = pg_temp, lib, public as $$
 declare
@@ -159,7 +159,7 @@ begin
         using (
             with changed as (
                 select pk_1::integer as customer_id
-                from dpl_keys_tmp
+                from dwv_keys_tmp
                 group by pk_1
             ),
             order_amount as (
@@ -213,7 +213,7 @@ begin
             using (
                 with changed as (
                     select pk_1::integer as customer_id
-                    from dpl_batch_tmp
+                    from dwv_batch_tmp
                     group by pk_1
                 ),
                 order_amount as (
@@ -266,19 +266,19 @@ begin
 end;
 $$;
 
-create or replace procedure dpl_test.run_incremental_passes(p_batch_size integer default null)
+create or replace procedure dwv_test.run_incremental_passes(p_batch_size integer default null)
 language plpgsql as $$
 begin
-    call dpl_test.run_customer_metrics(p_batch_size);
-    call dpl_test.run_customer_metrics(p_batch_size);
-    call dpl_test.seed_customer_delta();
-    call dpl_test.run_customer_metrics(p_batch_size);
-    call dpl_test.seed_customer_delta();
-    call dpl_test.run_customer_metrics(p_batch_size);
+    call dwv_test.run_customer_metrics(p_batch_size);
+    call dwv_test.run_customer_metrics(p_batch_size);
+    call dwv_test.seed_customer_delta();
+    call dwv_test.run_customer_metrics(p_batch_size);
+    call dwv_test.seed_customer_delta();
+    call dwv_test.run_customer_metrics(p_batch_size);
 end;
 $$;
 
-create or replace procedure dpl_test.snapshot_customer_metrics(p_reset boolean default false)
+create or replace procedure dwv_test.snapshot_customer_metrics(p_reset boolean default false)
 language plpgsql as $$
 begin
     delete from customer_metrics_inc;
@@ -290,13 +290,13 @@ begin
 
     if p_reset then
         delete from customer_metrics;
-        delete from dpl_watermark
+        delete from dwv_watermark
         where target_table = 'customer_metrics';
     end if;
 end;
 $$;
 
-create or replace function dpl_test.customer_metrics_xor()
+create or replace function dwv_test.customer_metrics_xor()
 returns integer
 language sql stable as $$
     select count(*)::integer

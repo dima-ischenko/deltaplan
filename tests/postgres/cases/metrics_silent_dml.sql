@@ -13,9 +13,9 @@ declare
     l_still      integer;
     l_diff       integer;
 begin
-    call dpl_test.seed_customer_metrics();
-    call dpl_test.run_incremental_passes(1);
-    call dpl_test.snapshot_customer_metrics(false);
+    call dwv_test.seed_customer_metrics();
+    call dwv_test.run_incremental_passes(1);
+    call dwv_test.snapshot_customer_metrics(false);
 
     select max_amount
     into l_old_max
@@ -35,9 +35,9 @@ begin
     delete from orders where customer_id = l_deleted_id;
     delete from customers where id = l_deleted_id;
 
-    call dpl_test.run_customer_metrics(1);
+    call dwv_test.run_customer_metrics(1);
 
-    l_diff := dpl_test.customer_metrics_xor();
+    l_diff := dwv_test.customer_metrics_xor();
     if l_diff is distinct from 0 then
         raise exception 'metrics silent dml incremental xor=%, expected 0', l_diff;
     end if;
@@ -49,10 +49,10 @@ begin
         raise exception 'metrics silent dml dropped deleted key';
     end if;
 
-    call dpl_test.snapshot_customer_metrics(true);
-    call dpl_test.run_customer_metrics(1);
+    call dwv_test.snapshot_customer_metrics(true);
+    call dwv_test.run_customer_metrics(1);
 
-    l_diff := dpl_test.customer_metrics_xor();
+    l_diff := dwv_test.customer_metrics_xor();
     if l_diff = 0 then
         raise exception 'metrics silent dml full refresh xor=0, expected a difference';
     end if;

@@ -1,23 +1,23 @@
 # Oracle
 
-Call `pkg_dpl` after you [deploy](deploy.md) it into the calculating user's schema. Methods and parameters: [root README](../../README.md).
+Call `pkg_dwv` after you [deploy](deploy.md) it into the calculating user's schema. Methods and parameters: [root README](../../README.md).
 
-Without batches, one refresh reads `dpl_keys_tmp`. The table holds only the current run. With batches, each refresh reads `dpl_batch_tmp`.
+Without batches, one refresh reads `dwv_keys_tmp`. The table holds only the current run. With batches, each refresh reads `dwv_batch_tmp`.
 
 ```sql
 declare
     l_change_date date := sysdate;
 begin
-    pkg_dpl.initialize('customer_metrics', 'all');
+    pkg_dwv.initialize('customer_metrics', 'all');
 
-    pkg_dpl.capture_delta('customers', q'[
+    pkg_dwv.capture_delta('customers', q'[
         select id as pk_1,
                updated_at as watermark
         from customers
         where updated_at > :since
     ]');
 
-    pkg_dpl.capture_delta('orders', q'[
+    pkg_dwv.capture_delta('orders', q'[
         select customer_id as pk_1,
                max(updated_at) as watermark
         from orders
@@ -25,7 +25,7 @@ begin
         group by customer_id
     ]');
 
-    pkg_dpl.capture_delta('order_items', q'[
+    pkg_dwv.capture_delta('order_items', q'[
         with changed_items as (
             select order_id, updated_at
             from order_items
@@ -38,14 +38,14 @@ begin
         group by o.customer_id
     ]');
 
-    pkg_dpl.prepare_batches(5000);
+    pkg_dwv.prepare_batches(5000);
 
-    while pkg_dpl.next_batch loop
+    while pkg_dwv.next_batch loop
         merge into customer_metrics t
             using (
                 with changed as (
                     select pk_1 as customer_id
-                    from dpl_batch_tmp
+                    from dwv_batch_tmp
                     group by pk_1
                 ),
                 order_amount as (
@@ -90,10 +90,10 @@ begin
                 s.last_order_id, s.cnt_completed, l_change_date
             );
 
-        pkg_dpl.finish_batch;
+        pkg_dwv.finish_batch;
     end loop;
 
-    pkg_dpl.finalize;
+    pkg_dwv.finalize;
     commit;
 end;
 ```
@@ -102,4 +102,4 @@ The same script is `demo/oracle/run.sql`. See [`demo/README.md`](../../demo/READ
 
 `finish_batch` commits when `p_commit_batch` is true (the default). `finalize` does not. Commit after `finalize` to store the watermark. `p_commit_batch => false` keeps the whole run in one transaction.
 
-`initialize` holds a `DBMS_LOCK` on the target and segment until `finalize`. Grant it once: [deploy.md](deploy.md).
+`initialize` holds a `DBMS_LOCK` on the owner, target and slice until `finalize`. Grant it once: [deploy.md](deploy.md).

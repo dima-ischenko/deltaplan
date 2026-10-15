@@ -3,7 +3,7 @@
 -- Default: a percentage of the customers already loaded. c_delta_mode is update
 -- (only updates), insert (only new customers), or mix (half of each).
 -- Run it again to plant another slice. This script does not touch
--- dpl_watermark. If run.sql has already stored one, planted rows get a
+-- dwv_watermark. If run.sql has already stored one, planted rows get a
 -- timestamp after it so the next run.sql captures them.
 
 set serveroutput on size unlimited
@@ -93,9 +93,9 @@ begin
 
     select max(watermark)
     into l_wm
-    from dpl_watermark
+    from dwv_watermark
     where target_table = 'customer_metrics'
-      and data_segment = 'all'
+      and data_slice = 'all'
       and source_table in ('customers', 'orders', 'order_items');
 
     select max(updated_at)

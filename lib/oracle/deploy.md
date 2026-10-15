@@ -7,7 +7,7 @@ sqlplus user/password@//host:1521/service @lib/oracle/deploy.sql
 sqlplus user/password@//host:1521/service @lib/oracle/rollback.sql
 ```
 
-`deploy.sql` creates `dpl_watermark`, the session key tables, and `pkg_dpl` in the calculating user's schema. `rollback.sql` removes them. Both are safe when objects are absent.
+`deploy.sql` creates `dwv_watermark`, the session key tables, and `pkg_dwv` in the calculating user's schema. `rollback.sql` removes them. Both are safe when objects are absent.
 
 `initialize` uses `DBMS_LOCK`. As a DBA, once per schema:
 

@@ -2,11 +2,11 @@
 create or replace function _unfinished()
 returns integer
 language plpgsql stable
-set search_path = pg_temp, :"dpl_schema", public as $$
+set search_path = pg_temp, :"dwv_schema", public as $$
 begin
   if exists (
     select 1
-    from dpl_keys_tmp
+    from dwv_keys_tmp
     where batch_no is not null
      and batch_done = 0
   ) then

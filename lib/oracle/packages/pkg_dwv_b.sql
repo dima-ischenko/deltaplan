@@ -1,7 +1,8 @@
-create or replace package body pkg_dpl is
+create or replace package body pkg_dwv is
 
+gv_target_owner    varchar2(128);
 gv_target_table    varchar2(128);
-gv_data_segment    varchar2(64);
+gv_data_slice      varchar2(64);
 gv_lookback_hours  number := 0;
 gv_batch_no        number;
 gv_batch_size      number;
@@ -18,11 +19,25 @@ c_w_proc   constant pls_integer := 26;
 c_w_name   constant pls_integer := 28;
 c_w_date   constant pls_integer := 32;
 c_w_batch  constant pls_integer := 18;
-c_w_seg    constant pls_integer := 16;
+c_w_slice  constant pls_integer := 16;
+
+-- dbms_lock.request return codes
+-- 0 success
+-- 1 timeout
+-- 2 deadlock
+-- 3 parameter error
+-- 4 already own lock
+-- 5 illegal lock handle
+c_lock_success     constant number := 0;
+c_lock_timeout     constant number := 1;
+c_lock_deadlock    constant number := 2;
+c_lock_param_error constant number := 3;
+c_lock_already_own constant number := 4;
+c_lock_illegal     constant number := 5;
 
 function get_proc_name(p_proc_name varchar2) return varchar2 is
 begin
-    return 'pkg_dpl.' || p_proc_name;
+    return 'pkg_dwv.' || p_proc_name;
 end get_proc_name;
 
 function fmt_date(p_date date) return varchar2 is
@@ -54,6 +69,86 @@ begin
          + extract(second from l_delta);
 end seconds_since;
 
+function lock_request_meaning(p_rc number) return varchar2 is
+begin
+    return case p_rc
+        when c_lock_success     then 'success'
+        when c_lock_timeout     then 'timeout'
+        when c_lock_deadlock    then 'deadlock'
+        when c_lock_param_error then 'parameter error'
+        when c_lock_already_own then 'already own lock'
+        when c_lock_illegal     then 'illegal lock handle'
+        else 'unknown'
+    end;
+end lock_request_meaning;
+
+function norm_ident(p_name varchar2, p_label varchar2) return varchar2 is
+    l_name varchar2(128);
+begin
+    if p_name is null then
+        raise_application_error(-20006, p_label || ' is required');
+    end if;
+
+    l_name := lower(trim(p_name));
+
+    if l_name is null then
+        raise_application_error(-20006, p_label || ' is required');
+    end if;
+
+    if instr(l_name, '.') > 0 then
+        raise_application_error(
+            -20006,
+            p_label || ' must be unqualified; pass p_owner for the schema'
+        );
+    end if;
+
+    if not regexp_like(l_name, '^[a-z][a-z0-9_#$]*$') then
+        raise_application_error(-20022, 'invalid ' || p_label || ' ' || p_name);
+    end if;
+
+    return l_name;
+end norm_ident;
+
+function resolve_owner(p_owner varchar2) return varchar2 is
+    l_owner varchar2(128);
+begin
+    l_owner := lower(trim(p_owner));
+    if l_owner is null then
+        l_owner := lower(sys_context('USERENV', 'CURRENT_SCHEMA'));
+    end if;
+    return norm_ident(l_owner, 'owner');
+end resolve_owner;
+
+procedure assert_relation(p_owner varchar2, p_table varchar2) is
+    l_n number;
+begin
+    select count(*)
+    into l_n
+    from all_objects
+    where owner = upper(p_owner)
+      and object_name = upper(p_table)
+      and object_type in ('TABLE', 'VIEW', 'MATERIALIZED VIEW')
+      and rownum = 1;
+
+    if l_n = 0 then
+        raise_application_error(
+            -20022,
+            'table ' || p_owner || '.' || p_table || ' does not exist or is not available'
+        );
+    end if;
+
+    begin
+        execute immediate
+            'select null from ' || p_owner || '.' || p_table || ' where 1 = 0';
+    exception
+        when others then
+            raise_application_error(
+                -20022,
+                'table ' || p_owner || '.' || p_table || ' does not exist or is not available'
+            );
+    end;
+end assert_relation;
+
 procedure write_log_row(
     p_proc_name varchar2,
     p_rows      number,
@@ -61,19 +156,21 @@ procedure write_log_row(
 ) is
     pragma autonomous_transaction;
 begin
-    insert into dpl_log (
+    insert into dwv_log (
         logged_at,
         proc_name,
+        target_owner,
         target_table,
-        data_segment,
+        data_slice,
         batch_no,
         log_rows,
         message
     ) values (
         systimestamp,
         p_proc_name,
+        gv_target_owner,
         gv_target_table,
-        gv_data_segment,
+        gv_data_slice,
         gv_batch_no,
         p_rows,
         substr(p_text, 1, 4000)
@@ -164,7 +261,7 @@ function unfinished_batches return number is
 begin
     select count(*)
     into l_left
-    from dpl_keys_tmp
+    from dwv_keys_tmp
     where batch_no is not null
       and batch_done = 0
       and rownum = 1;
@@ -201,7 +298,7 @@ begin
 
     select count(*)
     into l_open
-    from dpl_batch_tmp
+    from dwv_batch_tmp
     where rownum = 1;
 
     if l_open > 0 then
@@ -217,15 +314,20 @@ begin
     );
 end assert_no_open_batch;
 
+function get_target_owner return varchar2 is
+begin
+    return gv_target_owner;
+end get_target_owner;
+
 function get_target_table return varchar2 is
 begin
     return gv_target_table;
 end get_target_table;
 
-function get_data_segment return varchar2 is
+function get_data_slice return varchar2 is
 begin
-    return gv_data_segment;
-end get_data_segment;
+    return gv_data_slice;
+end get_data_slice;
 
 function get_batch_no return number is
 begin
@@ -244,9 +346,13 @@ end set_log_table;
 -- Named lock, same idea as lock_utl: ALLOCATE_UNIQUE(name) then REQUEST(handle).
 -- REQUEST has no name overload. ALLOCATE_UNIQUE writes DBMS_LOCK_ALLOCATED;
 -- the autonomous commit keeps that out of the caller's transaction.
-function run_lock_name(p_target varchar2, p_segment varchar2) return varchar2 is
+function run_lock_name(
+    p_owner   varchar2,
+    p_target  varchar2,
+    p_slice   varchar2
+) return varchar2 is
 begin
-    return substr('DPL|' || p_target || '|' || p_segment, 1, 128);
+    return substr('DWV|' || p_owner || '.' || p_target || '|' || p_slice, 1, 128);
 end run_lock_name;
 
 function allocate_lock_handle(p_name varchar2) return varchar2 is
@@ -258,8 +364,12 @@ begin
     return l_handle;
 end allocate_lock_handle;
 
-procedure acquire_run_lock(p_target varchar2, p_segment varchar2) is
-    l_name   varchar2(128) := run_lock_name(p_target, p_segment);
+procedure acquire_run_lock(
+    p_owner  varchar2,
+    p_target varchar2,
+    p_slice  varchar2
+) is
+    l_name   varchar2(128) := run_lock_name(p_owner, p_target, p_slice);
     l_handle varchar2(128);
     l_rc     number;
     l_proc   varchar2(64) := get_proc_name('initialize');
@@ -284,17 +394,31 @@ begin
         release_on_commit => false
     );
 
-    if l_rc not in (0, 4) then
-        i_log(l_proc, 0, 'lock busy name=' || l_name);
+    -- 0 success, 4 already own lock. 1 timeout means another session holds it.
+    if l_rc not in (c_lock_success, c_lock_already_own) then
+        i_log(
+            l_proc,
+            0,
+            'lock request rc=' || l_rc
+            || ' ' || lock_request_meaning(l_rc)
+            || ' name=' || l_name
+        );
+        if l_rc = c_lock_timeout then
+            raise_application_error(
+                -20021,
+                'another run is active for ' || p_owner || '.' || p_target || ' / ' || p_slice
+            );
+        end if;
         raise_application_error(
             -20021,
-            'another run is active for ' || p_target || ' / ' || p_segment
+            'lock request failed (' || lock_request_meaning(l_rc)
+            || ') for ' || p_owner || '.' || p_target || ' / ' || p_slice
         );
     end if;
 
     gv_lockhandle := l_handle;
     gv_lockname := l_name;
-    if l_rc = 4 then
+    if l_rc = c_lock_already_own then
         i_log(l_proc, 0, 'lock already held name=' || l_name);
     else
         i_log(l_proc, 0, 'lock acquired name=' || l_name);
@@ -320,46 +444,54 @@ begin
     i_log(get_proc_name('finalize'), 0, 'lock released name=' || l_name);
 end release_run_lock;
 
-function get_watermark(p_source_table varchar2) return date is
+function get_watermark(
+    p_source_owner varchar2,
+    p_source_table varchar2
+) return date is
     l_result date;
 begin
     select max(watermark)
     into l_result
-    from dpl_watermark
-    where target_table = gv_target_table
+    from dwv_watermark
+    where target_owner = gv_target_owner
+      and target_table = gv_target_table
+      and source_owner = p_source_owner
       and source_table = p_source_table
-      and data_segment = gv_data_segment;
+      and data_slice = gv_data_slice;
 
     return coalesce(l_result, date '2000-01-01');
 end get_watermark;
 
 procedure initialize(
     p_target_table    varchar2,
-    p_data_segment    varchar2 default 'all',
+    p_data_slice      varchar2 default 'all',
     p_lookback_hours  number   default 0,
-    p_debug           boolean  default false
+    p_debug           boolean  default false,
+    p_owner           varchar2 default null
 ) is
     l_proc_name  varchar2(64) := get_proc_name('initialize');
     l_started    timestamp := systimestamp;
+    l_owner      varchar2(128);
+    l_target     varchar2(128);
+    l_slice      varchar2(64);
     l_rows       number := 0;
     l_batch_rows number := 0;
 begin
-    if p_target_table is null then
-        raise_application_error(-20006, 'target_table is required');
-    end if;
-
-    if p_data_segment is null then
-        raise_application_error(-20006, 'data_segment is required');
-    end if;
+    l_owner := resolve_owner(p_owner);
+    l_target := norm_ident(p_target_table, 'target_table');
+    l_slice := norm_ident(p_data_slice, 'data_slice');
 
     if nvl(p_lookback_hours, 0) < 0 then
         raise_application_error(-20002, 'lookback_hours must be >= 0');
     end if;
 
+    assert_relation(l_owner, l_target);
+
     begin
-    gv_target_table := lower(p_target_table);
-    gv_data_segment := lower(p_data_segment);
-    acquire_run_lock(gv_target_table, gv_data_segment);
+    gv_target_owner := l_owner;
+    gv_target_table := l_target;
+    gv_data_slice := l_slice;
+    acquire_run_lock(gv_target_owner, gv_target_table, gv_data_slice);
     gv_lookback_hours := nvl(p_lookback_hours, 0);
     if p_debug then
         gv_debug := true;
@@ -372,17 +504,17 @@ begin
     gv_commit_batch := true;
     gv_batches_ready := false;
 
-    delete from dpl_keys_tmp;
+    delete from dwv_keys_tmp;
     l_rows := sql%rowcount;
 
-    delete from dpl_batch_tmp;
+    delete from dwv_batch_tmp;
     l_batch_rows := sql%rowcount;
 
     i_log(
         l_proc_name,
         l_rows,
-        fmt_col('target=' || gv_target_table, c_w_name)
-        || fmt_col('segment=' || gv_data_segment, c_w_seg)
+        fmt_col('target=' || gv_target_owner || '.' || gv_target_table, c_w_name)
+        || fmt_col('slice=' || gv_data_slice, c_w_slice)
         || 'lookback_hours=' || fmt_num(gv_lookback_hours)
         || ' deleted_temp=' || l_rows
         || ' deleted_batch=' || l_batch_rows
@@ -392,8 +524,9 @@ exception
     when others then
         i_log(l_proc_name, 0, 'failed ' || sqlerrm);
         rollback;
+        gv_target_owner := null;
         gv_target_table := null;
-        gv_data_segment := null;
+        gv_data_slice := null;
         gv_batch_no := null;
         gv_batch_size := null;
         gv_batch_total := null;
@@ -406,11 +539,13 @@ end initialize;
 procedure capture_delta(
     p_source_table    varchar2,
     p_sql             varchar2,
-    p_lookback_hours  number default null
+    p_lookback_hours  number default null,
+    p_owner           varchar2 default null
 ) is
     l_proc_name    varchar2(64) := get_proc_name('capture_delta');
     l_started      timestamp := systimestamp;
-    l_source_table varchar2(128) := lower(p_source_table);
+    l_source_owner varchar2(128);
+    l_source_table varchar2(128);
     l_lookback     number;
     l_watermark    date;
     l_bound        date;
@@ -425,9 +560,8 @@ procedure capture_delta(
 begin
     assert_ready;
 
-    if l_source_table is null then
-        raise_application_error(-20006, 'source_table is required');
-    end if;
+    l_source_owner := resolve_owner(p_owner);
+    l_source_table := norm_ident(p_source_table, 'source_table');
 
     if p_sql is null then
         raise_application_error(-20006, 'capture sql is required');
@@ -436,6 +570,8 @@ begin
     if placeholder_count(p_sql, ':since') != 1 then
         raise_application_error(-20015, 'capture SQL must contain :since exactly once');
     end if;
+
+    assert_relation(l_source_owner, l_source_table);
 
     l_lookback := coalesce(p_lookback_hours, gv_lookback_hours, 0);
 
@@ -451,7 +587,7 @@ begin
         raise_application_error(-20013, 'capture_delta is closed after prepare_batches until finalize');
     end if;
 
-    l_watermark := get_watermark(l_source_table);
+    l_watermark := get_watermark(l_source_owner, l_source_table);
     -- Date arithmetic keeps the bound as DATE. Hours are a fraction of a day.
     l_bound := l_watermark - l_lookback / 24;
 
@@ -475,7 +611,8 @@ begin
     begin
     l_insert_sql := '
         begin
-            insert into dpl_keys_tmp (
+            insert into dwv_keys_tmp (
+                source_owner,
                 source_table,
                 pk_1,
                 pk_2,
@@ -483,6 +620,7 @@ begin
                 watermark
             )
             select
+                :source_owner,
                 :source_table,
                 s.pk_1,
                 ' || l_pk2 || ',
@@ -493,7 +631,7 @@ begin
         end;';
 
     execute immediate l_insert_sql
-        using in l_source_table, in l_bound, out l_rows;
+        using in l_source_owner, in l_source_table, in l_bound, out l_rows;
 
     if gv_debug then
         select nvl(sum(cnt), 0),
@@ -505,8 +643,9 @@ begin
             select count(*) cnt,
                    min(watermark) min_wm,
                    max(watermark) max_wm
-            from dpl_keys_tmp
-            where source_table = l_source_table
+            from dwv_keys_tmp
+            where source_owner = l_source_owner
+              and source_table = l_source_table
             group by pk_1, pk_2, pk_3
         );
     end if;
@@ -514,7 +653,7 @@ begin
     i_log(
         l_proc_name,
         l_rows,
-        fmt_col('source=' || l_source_table, c_w_name)
+        fmt_col('source=' || l_source_owner || '.' || l_source_table, c_w_name)
         || fmt_col('stored=' || fmt_date(l_watermark), c_w_date)
         || fmt_col('lookback_hours=' || fmt_num(l_lookback), 20)
         || fmt_col('bound=' || fmt_date(l_bound), c_w_date)
@@ -535,7 +674,7 @@ exception
         i_log(
             l_proc_name,
             nvl(l_rows, 0),
-            fmt_col('source=' || l_source_table, c_w_name) || 'failed ' || sqlerrm
+            fmt_col('source=' || nvl(l_source_table, 'null'), c_w_name) || 'failed ' || sqlerrm
         );
         rollback;
         raise;
@@ -567,12 +706,12 @@ begin
 
     select count(*)
     into l_key_total
-    from dpl_keys_tmp
+    from dwv_keys_tmp
     where rownum = 1;
 
     select count(*)
     into l_assigned
-    from dpl_keys_tmp
+    from dwv_keys_tmp
     where batch_no is not null
       and rownum = 1;
 
@@ -606,7 +745,7 @@ begin
 
     begin
         if l_assigned = 0 then
-            merge into dpl_keys_tmp t
+            merge into dwv_keys_tmp t
             using (
                 select pk_1,
                        pk_2,
@@ -616,7 +755,7 @@ begin
                        ) / l_batch_size) as batch_no
                 from (
                     select distinct pk_1, pk_2, pk_3
-                    from dpl_keys_tmp
+                    from dwv_keys_tmp
                 )
             ) s
             on (t.pk_1 = s.pk_1
@@ -648,7 +787,7 @@ begin
 
         select nvl(max(batch_no), 0)
         into l_total
-        from dpl_keys_tmp;
+        from dwv_keys_tmp;
 
         gv_batch_total := l_total;
         l_left := unfinished_batches;
@@ -666,11 +805,11 @@ end prepare_batches;
 
 procedure load_batch_keys(p_batch_no number, p_keys out number) is
 begin
-    delete from dpl_batch_tmp;
+    delete from dwv_batch_tmp;
 
-    insert into dpl_batch_tmp (pk_1, pk_2, pk_3)
+    insert into dwv_batch_tmp (pk_1, pk_2, pk_3)
     select distinct pk_1, pk_2, pk_3
-    from dpl_keys_tmp
+    from dwv_keys_tmp
     where batch_no = p_batch_no
       and batch_done = 0;
 
@@ -694,7 +833,7 @@ begin
     begin
         select min(batch_no)
         into l_next
-        from dpl_keys_tmp
+        from dwv_keys_tmp
         where batch_no is not null
           and batch_done = 0;
 
@@ -739,7 +878,7 @@ begin
     end if;
 
     begin
-        update dpl_keys_tmp
+        update dwv_keys_tmp
         set batch_done = 1
         where batch_no = l_batch_no
           and batch_done = 0;
@@ -753,7 +892,7 @@ begin
         if gv_commit_batch then
             commit;
         else
-            delete from dpl_batch_tmp;
+            delete from dwv_batch_tmp;
         end if;
 
         gv_batch_no := null;
@@ -786,7 +925,7 @@ begin
         l_left := unfinished_batches;
         select count(*)
         into l_unassigned
-        from dpl_keys_tmp
+        from dwv_keys_tmp
         where batch_no is null
           and rownum = 1;
     end if;
@@ -795,7 +934,7 @@ begin
        or l_unassigned > 0 then
         raise_application_error(
             -20005,
-            'unfinished batches for ' || gv_target_table
+            'unfinished batches for ' || gv_target_owner || '.' || gv_target_table
             || ' (' || l_left || ' left). Watermark was not moved. '
             || 'Finish the remaining batches before calling finalize.'
         );
@@ -803,25 +942,35 @@ begin
 
     gv_batches_ready := false;
 
-    merge into dpl_watermark t
+    merge into dwv_watermark t
     using (
-        select gv_target_table as target_table,
-               gv_data_segment as data_segment,
+        select gv_target_owner as target_owner,
+               gv_target_table as target_table,
+               gv_data_slice as data_slice,
+               source_owner,
                source_table,
                max(watermark) as watermark
-        from dpl_keys_tmp
-        group by source_table
+        from dwv_keys_tmp
+        group by source_owner, source_table
     ) s
-    on (t.target_table = s.target_table
-        and t.data_segment = s.data_segment
+    on (t.target_owner = s.target_owner
+        and t.target_table = s.target_table
+        and t.data_slice = s.data_slice
+        and t.source_owner = s.source_owner
         and t.source_table = s.source_table)
     when matched then
         update set t.watermark = s.watermark,
                    t.updated_at = sysdate
         where t.watermark < s.watermark
     when not matched then
-        insert (target_table, data_segment, source_table, watermark, updated_at)
-        values (s.target_table, s.data_segment, s.source_table, s.watermark, sysdate);
+        insert (
+            target_owner, target_table, data_slice,
+            source_owner, source_table, watermark, updated_at
+        )
+        values (
+            s.target_owner, s.target_table, s.data_slice,
+            s.source_owner, s.source_table, s.watermark, sysdate
+        );
 
     l_moved := sql%rowcount;
 
@@ -830,7 +979,7 @@ begin
         into l_all_pk
         from (
             select distinct pk_1, pk_2, pk_3
-            from dpl_keys_tmp
+            from dwv_keys_tmp
         );
     end if;
 
@@ -842,11 +991,12 @@ begin
         || ' ' || fmt_num(round(seconds_since(l_started), 3)) || 's'
     );
 
-    delete from dpl_batch_tmp;
+    delete from dwv_batch_tmp;
 
     release_run_lock;
+    gv_target_owner := null;
     gv_target_table := null;
-    gv_data_segment := null;
+    gv_data_slice := null;
     gv_lookback_hours := 0;
     gv_batch_no := null;
     gv_batch_size := null;
@@ -860,4 +1010,4 @@ exception
         raise;
 end finalize;
 
-end pkg_dpl;
+end pkg_dwv;

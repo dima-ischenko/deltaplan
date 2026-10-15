@@ -11,18 +11,9 @@ declare
             end if;
     end;
 begin
-    drop_tbl('dpl_batch_tmp');
-    drop_tbl('dpl_keys_tmp');
-    drop_tbl('dpl_log');
-    drop_tbl('dpl_watermark');
-
-    -- leftover names from earlier layouts
-    drop_tbl('deltaplan_batch_tmp');
-    drop_tbl('deltaplan_keys_tmp');
-    drop_tbl('deltaplan_watermark');
-    drop_tbl('deltaplan_batch');
-    drop_tbl('deltaplan_keys');
-    drop_tbl('deltaplan_key');
-    drop_tbl('deltaplan_mark');
+    drop_tbl('dwv_batch_tmp');
+    drop_tbl('dwv_keys_tmp');
+    drop_tbl('dwv_log');
+    drop_tbl('dwv_watermark');
 end;
 /
