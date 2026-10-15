@@ -14,9 +14,9 @@ select * from (
     select * from customer_metrics order by customer_id
 ) where rownum <= 20;
 
-prompt --- dpl_watermark
+prompt --- dwv_watermark
 select source_table, watermark, updated_at
-from dpl_watermark
+from dwv_watermark
 where target_table = 'customer_metrics'
-  and data_segment = 'all'
+  and data_slice = 'all'
 order by source_table;

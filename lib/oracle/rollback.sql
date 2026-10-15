@@ -1,4 +1,4 @@
--- Remove dpl from the current schema. Safe when objects are absent.
+-- Remove dwv from the current schema. Safe when objects are absent.
 -- Code first, then structure, the reverse of deploy.sql.
 -- Start from the repository root.
 

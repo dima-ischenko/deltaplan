@@ -1,27 +1,28 @@
 create or replace function finalize()
 returns void
 language plpgsql
-set search_path = pg_temp, :"dpl_schema", public as $$
+set search_path = pg_temp, :"dwv_schema", public as $$
 declare
+l_owner      text;
 l_target     text;
-l_segment    text;
+l_slice      text;
 l_ready      boolean;
 l_left       integer := 0;
 l_unassigned integer := 0;
 l_moved      integer := 0;
 l_all_pk     integer := 0;
 begin
-  if to_regclass('dpl_session_tmp') is null then
-    raise exception 'DP-20001 Call initialize first';
+  if to_regclass('dwv_session_tmp') is null then
+    raise exception 'DWV-20001 Call initialize first';
   end if;
 
-  select target_table, data_segment, batches_ready
-  into l_target, l_segment, l_ready
-  from dpl_session_tmp
+  select target_owner, target_table, data_slice, batches_ready
+  into l_owner, l_target, l_slice, l_ready
+  from dwv_session_tmp
   where id = 1;
 
   if l_target is null then
-    raise exception 'DP-20001 Call initialize first';
+    raise exception 'DWV-20001 Call initialize first';
   end if;
 
   if l_ready then
@@ -32,24 +33,27 @@ begin
   if l_left > 0
    or l_unassigned > 0 then
     raise exception
-      'DP-20005 unfinished batches for % (% left). Watermark was not moved. Finish the remaining batches before calling finalize.',
-      l_target, l_left;
+      'DWV-20005 unfinished batches for %.% (% left). Watermark was not moved. Finish the remaining batches before calling finalize.',
+      l_owner, l_target, l_left;
   end if;
 
-  insert into dpl_watermark (
-    target_table, data_segment, source_table, watermark, updated_at
+  insert into dwv_watermark (
+    target_owner, target_table, data_slice,
+    source_owner, source_table, watermark, updated_at
   )
-  select l_target,
-     l_segment,
+  select l_owner,
+     l_target,
+     l_slice,
+     source_owner,
      source_table,
      max(watermark),
      clock_timestamp()::timestamp
-  from dpl_keys_tmp
-  group by source_table
-  on conflict (target_table, data_segment, source_table) do update
+  from dwv_keys_tmp
+  group by source_owner, source_table
+  on conflict (target_owner, target_table, data_slice, source_owner, source_table) do update
     set watermark = excluded.watermark,
       updated_at = excluded.updated_at
-    where dpl_watermark.watermark < excluded.watermark;
+    where dwv_watermark.watermark < excluded.watermark;
 
   get diagnostics l_moved = row_count;
 
@@ -58,7 +62,7 @@ begin
     into l_all_pk
     from (
       select distinct pk_1, pk_2, pk_3
-      from dpl_keys_tmp
+      from dwv_keys_tmp
     ) k;
     perform _log(
       'finalize',
@@ -69,12 +73,13 @@ begin
     perform _log('finalize', l_moved, format('moved=%s', l_moved));
   end if;
 
-  delete from dpl_batch_tmp;
-  perform _release_run_lock(l_target, l_segment);
+  delete from dwv_batch_tmp;
+  perform _release_run_lock(l_owner, l_target, l_slice);
 
-  update dpl_session_tmp
-  set target_table = null,
-    data_segment = null,
+  update dwv_session_tmp
+  set target_owner = null,
+    target_table = null,
+    data_slice = null,
     lookback_hours = 0,
     batch_no = null,
     batch_size = null,

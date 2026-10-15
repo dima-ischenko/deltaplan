@@ -1,6 +1,6 @@
 -- Load of customer_metrics for metrics_* cases.
--- p_batch_size null = one statement on dpl_keys_tmp.
--- A positive size uses prepare_batches / dpl_batch_tmp.
+-- p_batch_size null = one statement on dwv_keys_tmp.
+-- A positive size uses prepare_batches / dwv_batch_tmp.
 
 begin
     execute immediate 'drop table customer_metrics_inc purge';
@@ -28,7 +28,7 @@ begin
     delete from orders;
     delete from customers;
     delete from customer_metrics;
-    delete from dpl_watermark
+    delete from dwv_watermark
     where target_table = 'customer_metrics';
 
     insert into customers (id, name, region, updated_at) values
@@ -71,9 +71,9 @@ create or replace procedure seed_customer_delta is
 begin
     select max(watermark)
     into l_wm
-    from dpl_watermark
+    from dwv_watermark
     where target_table = 'customer_metrics'
-      and data_segment = 'all';
+      and data_slice = 'all';
 
     if l_wm is not null and l_as_of <= l_wm then
         l_as_of := l_wm + 1 / 86400;
@@ -135,7 +135,7 @@ create or replace procedure run_customer_metrics(p_batch_size number default nul
 
     procedure capture_all is
     begin
-        pkg_dpl.capture_delta(
+        pkg_dwv.capture_delta(
             p_source_table => 'customers',
             p_sql => q'[
                 select id as pk_1,
@@ -144,7 +144,7 @@ create or replace procedure run_customer_metrics(p_batch_size number default nul
                 where updated_at > :since
             ]'
         );
-        pkg_dpl.capture_delta(
+        pkg_dwv.capture_delta(
             p_source_table => 'orders',
             p_sql => q'[
                 select customer_id as pk_1,
@@ -154,7 +154,7 @@ create or replace procedure run_customer_metrics(p_batch_size number default nul
                 group by customer_id
             ]'
         );
-        pkg_dpl.capture_delta(
+        pkg_dwv.capture_delta(
             p_source_table => 'order_items',
             p_sql => q'[
                 with changed_items as (
@@ -177,7 +177,7 @@ create or replace procedure run_customer_metrics(p_batch_size number default nul
             using (
                 with changed as (
                     select pk_1 as customer_id
-                    from dpl_keys_tmp
+                    from dwv_keys_tmp
                     group by pk_1
                 ),
                 order_amount as (
@@ -229,7 +229,7 @@ create or replace procedure run_customer_metrics(p_batch_size number default nul
             using (
                 with changed as (
                     select pk_1 as customer_id
-                    from dpl_batch_tmp
+                    from dwv_batch_tmp
                     group by pk_1
                 ),
                 order_amount as (
@@ -275,19 +275,19 @@ create or replace procedure run_customer_metrics(p_batch_size number default nul
             );
     end merge_batch;
 begin
-    pkg_dpl.initialize('customer_metrics', 'all');
+    pkg_dwv.initialize('customer_metrics', 'all');
     capture_all;
 
     if p_batch_size is null then
         merge_keys;
-        pkg_dpl.finalize;
+        pkg_dwv.finalize;
     else
-        pkg_dpl.prepare_batches(p_batch_size);
-        while pkg_dpl.next_batch loop
+        pkg_dwv.prepare_batches(p_batch_size);
+        while pkg_dwv.next_batch loop
             merge_batch;
-            pkg_dpl.finish_batch;
+            pkg_dwv.finish_batch;
         end loop;
-        pkg_dpl.finalize;
+        pkg_dwv.finalize;
     end if;
 
     commit;
@@ -316,7 +316,7 @@ begin
 
     if p_reset then
         delete from customer_metrics;
-        delete from dpl_watermark
+        delete from dwv_watermark
         where target_table = 'customer_metrics';
     end if;
 

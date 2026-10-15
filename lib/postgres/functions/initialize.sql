@@ -1,58 +1,63 @@
--- Exclusive session lock on (target, segment). Another session gets DP-20021.
+-- Exclusive session lock on (owner, target, slice). Another session gets DWV-20021.
+-- p_owner omitted: resolve the unqualified name, then store that schema.
 create or replace function initialize(
     p_target_table    text,
-    p_data_segment    text default 'all',
+    p_data_slice      text default 'all',
     p_lookback_hours  numeric default 0,
-    p_debug           boolean default false
+    p_debug           boolean default false,
+    p_owner           text default null
 )
 returns void
 language plpgsql
-set search_path = pg_temp, :"dpl_schema", public as $$
+set search_path = pg_temp, :"dwv_schema", public as $$
 declare
-l_target  text := lower(p_target_table);
-l_segment text := lower(p_data_segment);
+l_owner   text;
+l_target  text;
+l_slice   text := _norm_ident(p_data_slice, 'data_slice');
 l_lookback    numeric := coalesce(p_lookback_hours, 0);
 l_rows    bigint;
 begin
-  if p_target_table is null then
-    raise exception 'DP-20006 target_table is required';
-  end if;
-  if p_data_segment is null then
-    raise exception 'DP-20006 data_segment is required';
-  end if;
   if l_lookback < 0 then
-    raise exception 'DP-20002 lookback_hours must be >= 0';
+    raise exception 'DWV-20002 lookback_hours must be >= 0';
   end if;
+
+  select q.o_owner, q.o_table
+  into l_owner, l_target
+  from _qualify_relation(p_owner, p_target_table, 'target_table') q;
 
   perform _ensure_temp();
 
-  insert into dpl_session_tmp (
-    id, target_table, data_segment, lookback_hours,
+  insert into dwv_session_tmp (
+    id, target_owner, target_table, data_slice, lookback_hours,
     batch_no, batch_size, batches_ready, debug
   ) values (
-    1, l_target, l_segment, l_lookback,
+    1, l_owner, l_target, l_slice, l_lookback,
     null, null, false, p_debug is true
   )
   on conflict (id) do update set
+    target_owner = excluded.target_owner,
     target_table = excluded.target_table,
-    data_segment = excluded.data_segment,
+    data_slice = excluded.data_slice,
     lookback_hours = excluded.lookback_hours,
     batch_no = null,
     batch_size = null,
     batches_ready = false,
     debug = excluded.debug;
 
-  perform _acquire_run_lock(l_target, l_segment);
+  perform _acquire_run_lock(l_owner, l_target, l_slice);
 
-  delete from dpl_keys_tmp;
+  delete from dwv_keys_tmp;
   get diagnostics l_rows = row_count;
 
-  delete from dpl_batch_tmp;
+  delete from dwv_batch_tmp;
 
   perform _log(
     'initialize',
     l_rows,
-    format('target=%s segment=%s lookback_hours=%s', l_target, l_segment, l_lookback)
+    format(
+      'target=%s.%s slice=%s lookback_hours=%s',
+      l_owner, l_target, l_slice, l_lookback
+    )
   );
 end;
 $$;

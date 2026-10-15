@@ -11,8 +11,6 @@ declare
             end if;
     end;
 begin
-    drop_pkg('pkg_dpl');
-    -- leftover names from earlier layouts
-    drop_pkg('pkg_deltaplan');
+    drop_pkg('pkg_dwv');
 end;
 /

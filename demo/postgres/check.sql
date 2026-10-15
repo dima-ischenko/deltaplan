@@ -7,7 +7,7 @@ select (select count(*) from customers) as customers,
 select * from customer_metrics order by customer_id limit 20;
 
 select source_table, watermark, updated_at
-from dpl_watermark
+from dwv_watermark
 where target_table = 'customer_metrics'
-  and data_segment = 'all'
+  and data_slice = 'all'
 order by source_table;

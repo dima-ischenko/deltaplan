@@ -1,4 +1,4 @@
--- Run the checks. tests/oracle/run.sh deploys pkg_dpl first from lib/oracle.
+-- Run the checks. tests/oracle/run.sh deploys pkg_dwv first from lib/oracle.
 -- From the repository root:
 -- sqlplus user/password@//host:1521/service @tests/oracle/run.sql
 
@@ -8,11 +8,11 @@ set define off
 set feedback off
 set verify off
 
-begin execute immediate 'drop package pkg_dpl_test'; exception when others then if sqlcode != -4043 then raise; end if; end;
+begin execute immediate 'drop package pkg_dwv_test'; exception when others then if sqlcode != -4043 then raise; end if; end;
 /
 
 @tests/oracle/helpers/tables.sql
-@tests/oracle/helpers/pkg_dpl_test.sql
+@tests/oracle/helpers/pkg_dwv_test.sql
 
 declare
     l_errors number;
@@ -20,20 +20,20 @@ begin
     select count(*)
     into l_errors
     from user_errors
-    where name in ('PKG_DPL', 'PKG_DPL_TEST');
+    where name in ('PKG_DWV', 'PKG_DWV_TEST');
 
     if l_errors > 0 then
         for r in (
             select name, line, position, text
             from user_errors
-            where name in ('PKG_DPL', 'PKG_DPL_TEST')
+            where name in ('PKG_DWV', 'PKG_DWV_TEST')
             order by name, sequence
         ) loop
             dbms_output.put_line(
                 r.name || ' ' || r.line || '/' || r.position || ': ' || r.text
             );
         end loop;
-        raise_application_error(-20000, 'dpl did not compile, errors=' || l_errors);
+        raise_application_error(-20000, 'dwv did not compile, errors=' || l_errors);
     end if;
 end;
 /
@@ -50,7 +50,7 @@ end;
 @tests/oracle/cases/volume.sql
 
 begin
-    dbms_output.put_line('pkg_dpl_test: passed');
+    dbms_output.put_line('pkg_dwv_test: passed');
 end;
 /
 
@@ -59,7 +59,7 @@ end;
 @tests/oracle/cases/metrics_same_result.sql
 @tests/oracle/cases/metrics_silent_dml.sql
 
-delete from dpl_watermark
+delete from dwv_watermark
 where target_table = 'customer_metrics';
 
 @demo/oracle/tables.sql
@@ -74,9 +74,9 @@ begin
     select count(*) into l_metrics from customer_metrics;
     select count(*)
     into l_wm
-    from dpl_watermark
+    from dwv_watermark
     where target_table = 'customer_metrics'
-      and data_segment = 'all';
+      and data_slice = 'all';
 
     if l_metrics != 3 then
         raise_application_error(-20000, 'demo metrics=' || l_metrics || ', expected 3');

@@ -1,5 +1,5 @@
 -- Shared fixture helpers. Cases live in tests/oracle/cases/.
-create or replace package pkg_dpl_test is
+create or replace package pkg_dwv_test is
 
     c_target constant varchar2(128) := 'inc_test_tgt';
     c_t1     constant date := timestamp '2024-01-15 10:00:00';
@@ -25,10 +25,10 @@ create or replace package pkg_dpl_test is
     procedure expect_error(p_test varchar2, p_code number);
     procedure volume(p_rows number);
 
-end pkg_dpl_test;
+end pkg_dwv_test;
 /
 
-create or replace package body pkg_dpl_test is
+create or replace package body pkg_dwv_test is
 
     procedure fail(p_test varchar2, p_detail varchar2) is
     begin
@@ -55,13 +55,13 @@ create or replace package body pkg_dpl_test is
 
     procedure reset is
     begin
-        delete from dpl_keys_tmp;
-        delete from dpl_batch_tmp;
-        delete from dpl_log;
-        delete from dpl_watermark
+        delete from dwv_keys_tmp;
+        delete from dwv_batch_tmp;
+        delete from dwv_log;
+        delete from dwv_watermark
         where target_table in (c_target, 'other_tgt');
 
-        pkg_dpl.set_log_table(false);
+        pkg_dwv.set_log_table(false);
 
         delete from inc_test_a;
         delete from inc_test_b;
@@ -69,7 +69,7 @@ create or replace package body pkg_dpl_test is
         delete from inc_test_expect;
         delete from inc_test_seen;
 
-        pkg_dpl.initialize(c_target, 'all', 0);
+        pkg_dwv.initialize(c_target, 'all', 0);
         commit;
     end reset;
 
@@ -87,7 +87,7 @@ create or replace package body pkg_dpl_test is
 
     procedure capture_source(p_table varchar2) is
     begin
-        pkg_dpl.capture_delta(
+        pkg_dwv.capture_delta(
             p_source_table => p_table,
             p_sql =>
                 'select id as pk_1,'
@@ -109,7 +109,7 @@ create or replace package body pkg_dpl_test is
         using (
             select k.pk_1 as id,
                    nvl(max(a.amount), 0) + nvl(max(b.amount), 0) as amount
-            from dpl_keys_tmp k
+            from dwv_keys_tmp k
             left join inc_test_a a on a.id = k.pk_1
             left join inc_test_b b on b.id = k.pk_1
             group by k.pk_1
@@ -128,7 +128,7 @@ create or replace package body pkg_dpl_test is
         using (
             select k.pk_1 as id,
                    nvl(max(a.amount), 0) + nvl(max(b.amount), 0) as amount
-            from dpl_batch_tmp k
+            from dwv_batch_tmp k
             left join inc_test_a a on a.id = k.pk_1
             left join inc_test_b b on b.id = k.pk_1
             group by k.pk_1
@@ -148,7 +148,7 @@ create or replace package body pkg_dpl_test is
         into l_cnt
         from (
             select distinct pk_1, pk_2, pk_3
-            from dpl_keys_tmp
+            from dwv_keys_tmp
         );
 
         return to_char(l_cnt);
@@ -159,9 +159,9 @@ create or replace package body pkg_dpl_test is
     begin
         select watermark
         into l_value
-        from dpl_watermark
+        from dwv_watermark
         where target_table = c_target
-          and data_segment = 'all'
+          and data_slice = 'all'
           and source_table = p_source;
 
         return to_char(l_value, 'YYYY-MM-DD HH24:MI:SS');
@@ -186,7 +186,7 @@ create or replace package body pkg_dpl_test is
     begin
         select listagg(pk_1, ',') within group (order by pk_1)
         into l_ids
-        from dpl_batch_tmp;
+        from dwv_batch_tmp;
 
         return l_ids;
     end ids_in_batch;
@@ -207,7 +207,7 @@ create or replace package body pkg_dpl_test is
     begin
         select count(*)
         into l_cnt
-        from dpl_watermark
+        from dwv_watermark
         where target_table = p_target;
 
         return to_char(l_cnt);
@@ -254,14 +254,14 @@ create or replace package body pkg_dpl_test is
         eq(l_name || ' tgt sum', to_char(l_sum), to_char(p_rows));
         eq(l_name || ' tgt touch', l_tmin || ':' || l_tmax, '1:1');
 
-        pkg_dpl.finalize;
+        pkg_dwv.finalize;
         eq(l_name || ' wm', wm('inc_test_a'), '2024-01-15 10:00:00');
 
-        pkg_dpl.initialize(c_target, 'all', 0);
+        pkg_dwv.initialize(c_target, 'all', 0);
         capture_source('inc_test_a');
         eq(l_name || ' second keys', key_count, '0');
         merge_all;
-        pkg_dpl.finalize;
+        pkg_dwv.finalize;
         select count(*) into l_cnt from inc_test_tgt;
         eq(l_name || ' second tgt count', to_char(l_cnt), to_char(p_rows));
 
@@ -274,11 +274,11 @@ create or replace package body pkg_dpl_test is
             to_char(p_rows, 'FM9999999999')
         );
 
-        pkg_dpl.initialize(c_target, 'all', 0);
+        pkg_dwv.initialize(c_target, 'all', 0);
         capture_source('inc_test_a');
         eq(l_name || ' delta keys', key_count, '3');
         merge_all;
-        pkg_dpl.finalize;
+        pkg_dwv.finalize;
 
         select count(*), sum(amount), min(touch), max(touch)
         into l_cnt, l_sum, l_tmin, l_tmax
@@ -296,5 +296,5 @@ create or replace package body pkg_dpl_test is
         pass(l_name);
     end volume;
 
-end pkg_dpl_test;
+end pkg_dwv_test;
 /

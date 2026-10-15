@@ -7,12 +7,12 @@ declare
     l_src  integer;
     l_diff integer;
 begin
-    call dpl_test.seed_customer_metrics();
-    call dpl_test.run_incremental_passes(1);
-    call dpl_test.snapshot_customer_metrics(true);
-    call dpl_test.run_customer_metrics(1);
+    call dwv_test.seed_customer_metrics();
+    call dwv_test.run_incremental_passes(1);
+    call dwv_test.snapshot_customer_metrics(true);
+    call dwv_test.run_customer_metrics(1);
 
-    l_diff := dpl_test.customer_metrics_xor();
+    l_diff := dwv_test.customer_metrics_xor();
     select count(*) into l_full from customer_metrics;
     select count(*) into l_inc from customer_metrics_inc;
     select count(*) into l_src from customers;
@@ -26,12 +26,12 @@ begin
 
     raise notice 'metrics incremental=full refresh (batches): passed';
 
-    call dpl_test.seed_customer_metrics();
-    call dpl_test.run_incremental_passes(null);
-    call dpl_test.snapshot_customer_metrics(true);
-    call dpl_test.run_customer_metrics(null);
+    call dwv_test.seed_customer_metrics();
+    call dwv_test.run_incremental_passes(null);
+    call dwv_test.snapshot_customer_metrics(true);
+    call dwv_test.run_customer_metrics(null);
 
-    l_diff := dpl_test.customer_metrics_xor();
+    l_diff := dwv_test.customer_metrics_xor();
     select count(*) into l_full from customer_metrics;
     select count(*) into l_inc from customer_metrics_inc;
     select count(*) into l_src from customers;

@@ -1,6 +1,6 @@
 # Local defaults match a database that is already running.
-# tests/docker/docker-compose.yml and GitHub Actions use dpl-oracle /
-# dpl-postgres; override the variables then.
+# tests/docker/docker-compose.yml and GitHub Actions use dwv-oracle /
+# dwv-postgres; override the variables then.
 
 ORACLE_CONTAINER ?= oracle
 ORACLE_CONNECT ?= test/test_pass@//localhost:1521/test_db

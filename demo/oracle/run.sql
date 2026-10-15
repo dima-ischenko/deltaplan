@@ -1,6 +1,6 @@
 -- Incremental load of customer_metrics.
 -- Capture keys that moved, refresh those keys in batches, then move the watermark.
--- pkg_dpl prints a timing line for each step. set timing on adds the wall time
+-- pkg_dwv prints a timing line for each step. set timing on adds the wall time
 -- of the whole block.
 
 set serveroutput on size unlimited
@@ -9,12 +9,12 @@ set timing on
 declare
     l_change_date date := sysdate;
 begin
-    pkg_dpl.initialize(
+    pkg_dwv.initialize(
         p_target_table => 'customer_metrics',
-        p_data_segment => 'all'
+        p_data_slice => 'all'
     );
 
-    pkg_dpl.capture_delta(
+    pkg_dwv.capture_delta(
         p_source_table => 'customers',
         p_sql => q'[
             select id as pk_1,
@@ -24,7 +24,7 @@ begin
         ]'
     );
 
-    pkg_dpl.capture_delta(
+    pkg_dwv.capture_delta(
         p_source_table => 'orders',
         p_sql => q'[
             select customer_id as pk_1,
@@ -35,7 +35,7 @@ begin
         ]'
     );
 
-    pkg_dpl.capture_delta(
+    pkg_dwv.capture_delta(
         p_source_table => 'order_items',
         p_sql => q'[
             with changed_items as (
@@ -51,15 +51,15 @@ begin
         ]'
     );
 
-    pkg_dpl.prepare_batches(p_batch_size => 5000);
+    pkg_dwv.prepare_batches(p_batch_size => 5000);
 
-    while pkg_dpl.next_batch loop
+    while pkg_dwv.next_batch loop
         merge into customer_metrics t
             using (
                 with changed as (
-                    select /*+ dynamic_sampling(dpl_batch_tmp 4) */
+                    select /*+ dynamic_sampling(dwv_batch_tmp 4) */
                            pk_1 as customer_id
-                    from dpl_batch_tmp
+                    from dwv_batch_tmp
                     group by pk_1
                 ),
                 order_amount as (
@@ -104,10 +104,10 @@ begin
                 s.last_order_id, s.cnt_completed, l_change_date
             );
 
-        pkg_dpl.finish_batch;
+        pkg_dwv.finish_batch;
     end loop;
 
-    pkg_dpl.finalize;
+    pkg_dwv.finalize;
     commit;
 end;
 /

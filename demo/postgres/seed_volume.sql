@@ -4,7 +4,7 @@
 -- Smaller smoke: 1000 / 10000 / 30.
 --
 -- Source rows keep a fixed base timestamp. This script does not touch
--- dpl_watermark; run.sql writes it after computing customer_metrics.
+-- dwv_watermark; run.sql writes it after computing customer_metrics.
 -- Plant a later slice with seed_delta.sql.
 
 \timing on

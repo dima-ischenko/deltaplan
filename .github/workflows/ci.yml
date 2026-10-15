@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      PG_CONTAINER: dpl-postgres
+      PG_CONTAINER: dwv-postgres
       PGUSER: test_user
       PGPASSWORD: test_pass
       PGDATABASE: test_db
@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      ORACLE_CONTAINER: dpl-oracle
+      ORACLE_CONTAINER: dwv-oracle
       ORACLE_CONNECT: test/test_pass@//localhost:1521/FREEPDB1
     steps:
       - name: Check out repository
