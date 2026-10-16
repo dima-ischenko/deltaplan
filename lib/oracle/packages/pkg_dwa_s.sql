@@ -7,6 +7,7 @@ create or replace package pkg_dwa is
   -- dwa_watermark receives the watermark itself; the lookback offset is not stored.
   -- Exclusive named DBMS_LOCK on (owner, target, slice). Another session gets -20021.
   -- The lock survives commit and is released in finalize, or when the session ends.
+  -- p_log_table writes each step to dwa_log. Off by default.
   -- p_owner defaults to sys_context('USERENV', 'CURRENT_SCHEMA').
   -- The target must exist and be selectable by the caller.
   procedure initialize(
@@ -14,18 +15,9 @@ create or replace package pkg_dwa is
       p_data_slice      varchar2 default 'all',
       p_lookback_hours  number   default 0,
       p_debug           boolean  default false,
+      p_log_table       boolean  default false,
       p_owner           varchar2 default null
   );
-
-  -- For capture and refresh SQL. Package variables are not visible in SQL.
-  function get_target_owner return varchar2;
-  function get_target_table return varchar2;
-
-  -- The number of the batch that is open, or null when none is.
-  function get_batch_no return number;
-
-  -- Write each log line to dwa_log. Off by default.
-  procedure set_log_table(p_enabled boolean default true);
 
   -- A null p_lookback_hours takes the value given to initialize.
   -- p_sql must contain :since at least once. Repeat the same bind when a
@@ -46,8 +38,8 @@ create or replace package pkg_dwa is
   --
   -- Without batches it reads every key from dwa_keys_tmp
   -- and finalize is called immediately afterwards.
-  -- The table holds only the current run. Target in SQL is
-  -- get_target_table. Slice is the value given to initialize.
+  -- The table holds only the current run. Target and slice
+  -- are the values given to initialize.
   --
   -- With batches: prepare_batches, then the loop
   -- next_batch / SQL against dwa_batch_tmp / finish_batch.

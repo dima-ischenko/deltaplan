@@ -679,6 +679,7 @@ procedure initialize(
     p_data_slice      varchar2 default 'all',
     p_lookback_hours  number   default 0,
     p_debug           boolean  default false,
+    p_log_table       boolean  default false,
     p_owner           varchar2 default null
 ) is
     l_proc_name  varchar2(64) := get_proc_name('initialize');
@@ -706,6 +707,7 @@ begin
     acquire_run_lock(get_target_owner, get_target_table, get_data_slice);
     set_lookback_hours(nvl(p_lookback_hours, 0));
     set_debug(p_debug);
+    set_log_table(p_log_table);
     clear_batch_state;
 
     delete from dwa_keys_tmp;

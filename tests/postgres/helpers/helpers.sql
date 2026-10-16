@@ -46,7 +46,6 @@ create or replace procedure dwa_test.reset()
 language plpgsql as $$
 begin
     set local search_path = pg_temp, lib, public;
-    perform set_log_table(false);
     perform initialize('inc_test_tgt', 'all', 0);
     delete from dwa_keys_tmp;
     delete from dwa_batch_tmp;

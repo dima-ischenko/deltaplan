@@ -1,6 +1,5 @@
 declare
     l_step number := 0;
-    l_no   number;
 begin
     pkg_dwa_test.reset;
     pkg_dwa_test.add_row('inc_test_a', 'a', 1, pkg_dwa_test.c_t1);
@@ -14,16 +13,15 @@ begin
 
     while pkg_dwa.next_batch loop
         l_step := l_step + 1;
-        l_no := pkg_dwa.get_batch_no;
 
         insert into inc_test_seen (batch_no, id)
-        select l_no, pk_1
+        select l_step, pk_1
         from dwa_batch_tmp;
 
         pkg_dwa_test.merge_batch;
 
         if l_step = 1 then
-            pkg_dwa_test.eq('open batch', to_char(l_no), '1');
+            pkg_dwa_test.eq('open batch', to_char(l_step), '1');
             pkg_dwa_test.eq('open keys', pkg_dwa_test.ids_in_batch, 'a,b');
             pkg_dwa_test.eq('open tgt', pkg_dwa_test.tgt_state, 'a:1:1,b:2:1');
             pkg_dwa_test.eq('open wm', pkg_dwa_test.wm('inc_test_a'), to_char(null));

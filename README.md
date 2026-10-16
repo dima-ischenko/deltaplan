@@ -13,7 +13,7 @@ On Oracle the entry point is `pkg_dwa`. On PostgreSQL the same names are functio
 
 A run is `initialize` -> `capture_delta` per source -> refresh SQL -> `finalize`. Batches are optional: `prepare_batches`, then `next_batch` / refresh / `finish_batch`.
 
-### initialize(p_target_table, p_data_slice, p_lookback_hours, p_debug, p_owner)
+### initialize(p_target_table, p_data_slice, p_lookback_hours, p_debug, p_log_table, p_owner)
 
 Starts a run and clears `dwa_keys_tmp`. Takes an exclusive session lock on `(owner, target_table, data_slice)` so a second session cannot start the same slice. The lock survives `COMMIT` (including `finish_batch`) and is released in `finalize`, or when the session ends. Repeat `initialize` in the same session after a failure is allowed. A different `p_data_slice` of the same target can run in parallel. The target must exist and be selectable.
 
@@ -23,6 +23,7 @@ Starts a run and clears `dwa_keys_tmp`. Takes an exclusive session lock on `(own
 | `p_data_slice` | no | `'all'` | Independent watermark slice of this target. Not a storage segment. |
 | `p_lookback_hours` | no | `0` | Hours subtracted from the stored watermark when binding `:since`. Fractions allowed. `0` binds the stored watermark. Not written to `dwa_watermark`. |
 | `p_debug` | no | `false` | Extra diagnostic queries (slice stats on capture, pk counts on finalize). Does not change what the run writes. |
+| `p_log_table` | no | `false` | Write each step to `dwa_log`. `dbms_output` / notices still print. On Oracle the insert is an autonomous transaction, so a rollback of the run keeps the log. PostgreSQL and Greenplum have no analog: the row lives in the caller's transaction. |
 | `p_owner` | no | current schema | Schema of the target. Oracle uses `sys_context('USERENV', 'CURRENT_SCHEMA')`. PostgreSQL resolves an omitted owner from the install schema / `public`. |
 
 A second session that calls `initialize` for the same triple gets `DWA-20021` / `-20021`. A missing or inaccessible target gets `DWA-20022` / `-20022`.
@@ -67,19 +68,7 @@ Writes, for each source, the greatest captured watermark. Never moves a watermar
 
 After a failure, repeat from `initialize`. The refresh SQL must be idempotent.
 
-### Session getters
-
-No parameters. Return `null` when no run is open.
-
-| Method | Returns |
-| --- | --- |
-| `get_target_owner()` | Schema of the current target. |
-| `get_target_table()` | Target of the current run. Use it in capture and refresh SQL. |
-| `get_batch_no()` | Open batch number, or `null`. |
-
-`set_log_table([true])` / `set_log_table(false)` writes each step to `dwa_log`. Off by default. `dbms_output` / notices still print. On Oracle the insert is an autonomous transaction, so a rollback of the run keeps the log. PostgreSQL and Greenplum have no analog: the row lives in the caller's transaction.
-
-Without batches the refresh reads `dwa_keys_tmp`. The table holds only the current run; the target is session state (`get_target_table`). Slice is the value given to `initialize`. With batches the refresh reads `dwa_batch_tmp`. A key from several sources is assigned to one batch.
+Without batches the refresh reads `dwa_keys_tmp`. The table holds only the current run. Target and slice are the values given to `initialize`. With batches the refresh reads `dwa_batch_tmp`. A key from several sources is assigned to one batch.
 
 ## Tables
 
@@ -104,7 +93,7 @@ Same names and column order on Oracle and PostgreSQL.
 
 `dwa_batch_tmp` holds `pk_1`, `pk_2`, `pk_3` of the open batch. A commit empties it.
 
-`dwa_log` is permanent. Rows are appended only when `set_log_table` is on.
+`dwa_log` is permanent. Rows are appended only when `initialize` is called with `p_log_table` true.
 
 | Column | Meaning |
 | --- | --- |

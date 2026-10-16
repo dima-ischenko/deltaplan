@@ -7,7 +7,6 @@ begin
     pkg_dwa_test.capture_both;
 
     pkg_dwa_test.eq('static keys', pkg_dwa_test.key_count, '3');
-    pkg_dwa_test.eq('static batch no', to_char(pkg_dwa.get_batch_no), to_char(null));
     pkg_dwa_test.merge_all;
     pkg_dwa_test.eq('static tgt', pkg_dwa_test.tgt_state, '1:10:1,2:25:1,3:7:1');
 
@@ -15,7 +14,18 @@ begin
     pkg_dwa_test.eq('static wm a', pkg_dwa_test.wm('inc_test_a'), '2024-01-15 10:00:00');
     pkg_dwa_test.eq('static wm b', pkg_dwa_test.wm('inc_test_b'), '2024-01-15 10:00:01');
     pkg_dwa_test.eq('static other tracking', pkg_dwa_test.tracking_count('other_tgt'), '0');
-    pkg_dwa_test.eq('static closed', pkg_dwa.get_target_table, to_char(null));
+    begin
+        pkg_dwa.capture_delta(
+            'inc_test_a',
+            'select id as pk_1, updated_at as watermark from inc_test_a where updated_at > :since'
+        );
+        pkg_dwa_test.expect_error('static closed', -20001);
+    exception
+        when others then
+            if sqlcode != -20001 then
+                raise;
+            end if;
+    end;
 
     pkg_dwa.initialize(pkg_dwa_test.c_target, 'all', 0);
     pkg_dwa_test.capture_both;

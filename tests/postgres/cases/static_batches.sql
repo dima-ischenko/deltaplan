@@ -3,7 +3,6 @@ language plpgsql as $$
 declare
     c_t1   constant timestamp := timestamp '2024-01-15 10:00:00';
     l_step integer;
-    l_no   numeric;
 begin
     call dwa_test.reset();
     call dwa_test.add_row('inc_test_a', 'a', 1, c_t1);
@@ -16,12 +15,11 @@ begin
     l_step := 0;
     while next_batch() loop
         l_step := l_step + 1;
-        l_no := get_batch_no();
         insert into inc_test_seen (batch_no, id)
-        select l_no, pk_1 from dwa_batch_tmp;
+        select l_step, pk_1 from dwa_batch_tmp;
         call dwa_test.merge_batch();
         if l_step = 1 then
-            call dwa_test.eq('open batch', l_no::integer::text, '1');
+            call dwa_test.eq('open batch', l_step::text, '1');
             call dwa_test.eq('open keys', dwa_test.ids_in_batch(), 'a,b');
             call dwa_test.eq('open tgt', dwa_test.tgt_state(), 'a:1:1,b:2:1');
             call dwa_test.eq('open wm', dwa_test.wm('inc_test_a'), null);

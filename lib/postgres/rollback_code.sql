@@ -4,6 +4,7 @@ drop function if exists :"dwa_schema".finish_batch(bigint);
 drop function if exists :"dwa_schema".next_batch();
 drop function if exists :"dwa_schema".prepare_batches(numeric);
 drop function if exists :"dwa_schema".capture_delta(text, text, numeric, text);
+drop function if exists :"dwa_schema".initialize(text, text, numeric, boolean, boolean, text);
 drop function if exists :"dwa_schema".initialize(text, text, numeric, boolean, text);
 drop function if exists :"dwa_schema".set_log_table(boolean);
 drop function if exists :"dwa_schema"._log(text, numeric, text);

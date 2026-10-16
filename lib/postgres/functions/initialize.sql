@@ -1,10 +1,12 @@
 -- Exclusive session lock on (owner, target, slice). Another session gets DWA-20021.
+-- p_log_table writes each step to dwa_log. Off by default.
 -- p_owner omitted: resolve the unqualified name, then store that schema.
 create or replace function initialize(
     p_target_table    text,
     p_data_slice      text default 'all',
     p_lookback_hours  numeric default 0,
     p_debug           boolean default false,
+    p_log_table       boolean default false,
     p_owner           text default null
 )
 returns void
@@ -29,10 +31,10 @@ begin
 
   insert into dwa_session_tmp (
     id, target_owner, target_table, data_slice, lookback_hours,
-    batch_no, batch_size, batches_ready, debug
+    batch_no, batch_size, batches_ready, debug, log_table
   ) values (
     1, l_owner, l_target, l_slice, l_lookback,
-    null, null, false, p_debug is true
+    null, null, false, p_debug is true, p_log_table is true
   )
   on conflict (id) do update set
     target_owner = excluded.target_owner,
@@ -42,7 +44,8 @@ begin
     batch_no = null,
     batch_size = null,
     batches_ready = false,
-    debug = excluded.debug;
+    debug = excluded.debug,
+    log_table = excluded.log_table;
 
   perform _acquire_run_lock(l_owner, l_target, l_slice);
 

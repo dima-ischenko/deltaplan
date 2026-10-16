@@ -61,8 +61,6 @@ create or replace package body pkg_dwa_test is
         delete from dwa_watermark
         where target_table in (c_target, 'other_tgt');
 
-        pkg_dwa.set_log_table(false);
-
         delete from inc_test_a;
         delete from inc_test_b;
         delete from inc_test_tgt;

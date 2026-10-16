@@ -1,4 +1,4 @@
--- Append-only log of dwa steps. Written only when set_log_table is on.
+-- Append-only log of dwa steps. Written only when initialize p_log_table is true.
 do $ddl$
 declare
     l_distributed      text := '';
@@ -60,7 +60,7 @@ end
 $ddl$;
 
 comment on table dwa_log is
-    'Optional run log. set_log_table(true) writes a row per step in the caller transaction. Off by default.';
+    'Optional run log. initialize(..., p_log_table => true) writes a row per step in the caller transaction. Off by default.';
 comment on column dwa_log.target_owner is
     'Schema of the target table at that step.';
 comment on column dwa_log.data_slice is
