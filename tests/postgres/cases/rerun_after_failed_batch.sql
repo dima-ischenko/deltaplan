@@ -8,7 +8,7 @@ begin
     call dwa_test.add_row('inc_test_a', 'b', 2, c_t1);
     call dwa_test.add_row('inc_test_a', 'c', 3, c_t1);
     call dwa_test.capture_source('inc_test_a');
-    perform prepare_batches(2);
+    perform prepare_batches(p_batch_size => 2);
     if not next_batch() then
         call dwa_test.fail('rerun', 'missing first batch');
     end if;
@@ -24,9 +24,9 @@ begin
     call dwa_test.eq('rerun rolled back', dwa_test.tgt_state(), 'a:1:1,b:2:1');
     call dwa_test.eq('rerun wm still old', dwa_test.wm('inc_test_a'), null);
 
-    perform initialize('inc_test_tgt', 'all', 0);
+    perform initialize(p_target_table => 'inc_test_tgt', p_data_slice => 'all', p_lookback_hours => 0);
     call dwa_test.capture_source('inc_test_a');
-    perform prepare_batches(2);
+    perform prepare_batches(p_batch_size => 2);
     while next_batch() loop
         call dwa_test.merge_batch();
         perform finish_batch();

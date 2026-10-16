@@ -24,7 +24,7 @@ begin
     where target_table = pkg_dwa_test.c_target;
     commit;
 
-    pkg_dwa.initialize(pkg_dwa_test.c_target, 'all', 0);
+    pkg_dwa.initialize(p_target_table => pkg_dwa_test.c_target, p_data_slice => 'all', p_lookback_hours => 0);
     pkg_dwa_test.capture_both;
     pkg_dwa.prepare_batches(p_batch_size => 1);
 

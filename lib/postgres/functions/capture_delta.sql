@@ -1,13 +1,13 @@
+-- p_owner defaults to the current schema. The source must exist and be selectable.
 -- p_lookback_hours null takes the value given to initialize.
 -- p_sql must contain :since. :data_slice is optional.
 -- :since is the stored watermark minus the lookback.
 -- The statement must return pk_1 and watermark. pk_2 and pk_3 are optional.
--- p_owner defaults to the current schema. The source must exist and be selectable.
 create or replace function capture_delta(
     p_source_table    text,
+    p_owner           text default null,
     p_sql             text,
-    p_lookback_hours  numeric default null,
-    p_owner           text default null
+    p_lookback_hours  numeric default null
 )
 returns void
 language plpgsql

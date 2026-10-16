@@ -13,31 +13,31 @@ On Oracle the entry point is `pkg_dwa`. On PostgreSQL the same names are functio
 
 A run is `initialize` -> `capture_delta` per source -> refresh SQL -> `finalize`. Batches are optional: `prepare_batches`, then `next_batch` / refresh / `finish_batch`.
 
-### initialize(p_target_table, p_data_slice, p_lookback_hours, p_debug, p_log_table, p_owner)
+### initialize(p_target_table, p_owner, p_data_slice, p_lookback_hours, p_debug, p_log_table)
 
 Starts a run and clears `dwa_keys_tmp`. Takes an exclusive session lock on `(owner, target_table, data_slice)` so a second session cannot start the same slice. The lock survives `COMMIT` (including `finish_batch`) and is released in `finalize`, or when the session ends. Repeat `initialize` in the same session after a failure is allowed. A different `p_data_slice` of the same target can run in parallel. The target must exist and be selectable.
 
 | Parameter | Required | Default | Effect |
 | --- | --- | --- | --- |
 | `p_target_table` | yes | — | Unqualified target being loaded. |
+| `p_owner` | no | current schema | Schema of the target. Oracle uses `sys_context('USERENV', 'CURRENT_SCHEMA')`. PostgreSQL resolves an omitted owner from the install schema / `public`. |
 | `p_data_slice` | no | `'all'` | Independent watermark slice of this target. |
 | `p_lookback_hours` | no | `0` | Hours subtracted from the stored watermark when binding `:since`. Not written to `dwa_watermark`. |
 | `p_debug` | no | `false` | Extra diagnostic output on capture and finalize. |
 | `p_log_table` | no | `false` | Write each step to `dwa_log`. `dbms_output` / notices still print. On Oracle the insert is an autonomous transaction, so a rollback of the run keeps the log. PostgreSQL and Greenplum have no analog: the row lives in the caller's transaction. |
-| `p_owner` | no | current schema | Schema of the target. Oracle uses `sys_context('USERENV', 'CURRENT_SCHEMA')`. PostgreSQL resolves an omitted owner from the install schema / `public`. |
 
 A second session that calls `initialize` for the same triple gets `DWA-20021` / `-20021`. A missing or inaccessible target gets `DWA-20022` / `-20022`.
 
-### capture_delta(p_source_table, p_sql, p_lookback_hours, p_owner)
+### capture_delta(p_source_table, p_owner, p_sql, p_lookback_hours)
 
 Inserts changed keys into `dwa_keys_tmp`. The source must exist and be selectable. Watermarks are stored per source owner and name, so the same table name can be used from different schemas.
 
 | Parameter | Required | Default | Effect |
 | --- | --- | --- | --- |
 | `p_source_table` | yes | — | Unqualified source name stored with the watermark. |
+| `p_owner` | no | current schema | Schema of the source. Same default as `initialize`. |
 | `p_sql` | yes | — | Must return `pk_1` and `watermark`. `pk_2` and `pk_3` are optional. Must contain `:since`. `:data_slice` is optional; it is the slice given to `initialize`. |
 | `p_lookback_hours` | no | `null` | Lookback for this source. `null` uses the value from `initialize`. |
-| `p_owner` | no | current schema | Schema of the source. Same default as `initialize`. |
 
 `:since` is the stored watermark minus the lookback. With no stored row the bound is `2000-01-01`. `:data_slice` is the slice given to `initialize`.
 
@@ -108,9 +108,9 @@ Same names and column order on Oracle and PostgreSQL.
 Use a named `p_data_slice` when the same target is loaded in independent slices. Each slice has its own watermark. Filter capture SQL with `:data_slice`. In refresh SQL use the same literal you passed to `initialize`.
 
 ```sql
-pkg_dwa.initialize('customer_metrics', 'fr', 2);
+pkg_dwa.initialize(p_target_table => 'customer_metrics', p_data_slice => 'fr', p_lookback_hours => 2);
 
-pkg_dwa.capture_delta('orders', q'[
+pkg_dwa.capture_delta(p_source_table => 'orders', p_sql => q'[
     select customer_id as pk_1,
            max(updated_at) as watermark
     from orders
@@ -123,8 +123,8 @@ pkg_dwa.capture_delta('orders', q'[
 On PostgreSQL the same call is `initialize`. Cross-schema sources pass `p_owner`:
 
 ```sql
-pkg_dwa.initialize('customer_metrics', p_owner => 'analytics');
-pkg_dwa.capture_delta('orders', p_sql => '...', p_owner => 'sales');
+pkg_dwa.initialize(p_target_table => 'customer_metrics', p_owner => 'analytics');
+pkg_dwa.capture_delta(p_source_table => 'orders', p_owner => 'sales', p_sql => '...');
 ```
 
 ## Hard deletes

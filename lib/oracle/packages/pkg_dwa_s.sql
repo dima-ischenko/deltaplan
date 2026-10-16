@@ -1,32 +1,32 @@
 create or replace package pkg_dwa is
 
+  -- p_owner defaults to sys_context('USERENV', 'CURRENT_SCHEMA').
+  -- The target must exist and be selectable by the caller.
   -- p_lookback_hours moves the read bound back by N hours.
   -- Zero uses the stored watermark. The lookback is not written to dwa_watermark.
   -- Exclusive named DBMS_LOCK on (owner, target, slice). Another session gets -20021.
   -- The lock survives commit and is released in finalize, or when the session ends.
   -- p_log_table writes each step to dwa_log. Off by default.
-  -- p_owner defaults to sys_context('USERENV', 'CURRENT_SCHEMA').
-  -- The target must exist and be selectable by the caller.
   procedure initialize(
       p_target_table    varchar2,
+      p_owner           varchar2 default null,
       p_data_slice      varchar2 default 'all',
       p_lookback_hours  number   default 0,
       p_debug           boolean  default false,
-      p_log_table       boolean  default false,
-      p_owner           varchar2 default null
+      p_log_table       boolean  default false
   );
 
+  -- p_owner defaults to the current schema. The source must exist and be
+  -- selectable. Watermarks are stored per (source owner, source table).
   -- A null p_lookback_hours takes the value given to initialize.
   -- p_sql must contain :since. :data_slice is optional.
   -- :since is the stored watermark minus the lookback.
   -- The statement must return pk_1 and watermark. pk_2 and pk_3 are optional.
-  -- p_owner defaults to the current schema. The source must exist and be
-  -- selectable. Watermarks are stored per (source owner, source table).
   procedure capture_delta(
       p_source_table    varchar2,
+      p_owner           varchar2 default null,
       p_sql             varchar2,
-      p_lookback_hours  number default null,
-      p_owner           varchar2 default null
+      p_lookback_hours  number default null
   );
 
   -- Batches are optional. The target calculation is ordinary SQL.

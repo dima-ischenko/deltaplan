@@ -13,10 +13,10 @@ begin
     pkg_dwa_test.add_row('inc_test_a', 'b', 1, timestamp '2024-01-15 11:00:00');
     pkg_dwa_test.add_row('inc_test_a', 'c', 1, timestamp '2024-01-14 12:00:00');
 
-    pkg_dwa.initialize(pkg_dwa_test.c_target, 'all', 0);
+    pkg_dwa.initialize(p_target_table => pkg_dwa_test.c_target, p_data_slice => 'all', p_lookback_hours => 0);
     pkg_dwa.capture_delta(
-        'inc_test_a',
-        q'[
+        p_source_table => 'inc_test_a',
+        p_sql => q'[
             select id as pk_1, updated_at as watermark
             from inc_test_a
             where trunc(updated_at) >= trunc(:since)
@@ -29,8 +29,8 @@ begin
 
     begin
         pkg_dwa.capture_delta(
-            'inc_test_a',
-            q'[select id as pk_1, updated_at as watermark from inc_test_a]'
+            p_source_table => 'inc_test_a',
+            p_sql => q'[select id as pk_1, updated_at as watermark from inc_test_a]'
         );
         pkg_dwa_test.expect_error('since missing', -20015);
     exception
@@ -45,10 +45,10 @@ begin
     pkg_dwa_test.reset;
     pkg_dwa_test.add_row('inc_test_a', 'a', 1, pkg_dwa_test.c_t1);
     pkg_dwa_test.add_row('inc_test_a', 'b', 1, pkg_dwa_test.c_t1);
-    pkg_dwa.initialize(pkg_dwa_test.c_target, 'a', 0);
+    pkg_dwa.initialize(p_target_table => pkg_dwa_test.c_target, p_data_slice => 'a', p_lookback_hours => 0);
     pkg_dwa.capture_delta(
-        'inc_test_a',
-        q'[
+        p_source_table => 'inc_test_a',
+        p_sql => q'[
             select id as pk_1, updated_at as watermark
             from inc_test_a
             where id = :data_slice

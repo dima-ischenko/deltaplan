@@ -22,12 +22,12 @@ begin
         'static closed',
         'DWA-20001',
         $sql$select capture_delta(
-            'inc_test_a',
-            'select id as pk_1, updated_at as watermark from inc_test_a where updated_at > :since'
+            p_source_table => 'inc_test_a',
+            p_sql => 'select id as pk_1, updated_at as watermark from inc_test_a where updated_at > :since'
         )$sql$
     );
 
-    perform initialize('inc_test_tgt', 'all', 0);
+    perform initialize(p_target_table => 'inc_test_tgt', p_data_slice => 'all', p_lookback_hours => 0);
     call dwa_test.capture_both();
     call dwa_test.eq('static second keys', dwa_test.key_count(), '0');
     call dwa_test.merge_all();
@@ -40,7 +40,7 @@ begin
         updated_at = c_t2
     where id = '2';
 
-    perform initialize('inc_test_tgt', 'all', 0);
+    perform initialize(p_target_table => 'inc_test_tgt', p_data_slice => 'all', p_lookback_hours => 0);
     call dwa_test.capture_both();
     call dwa_test.eq('static delta keys', dwa_test.key_count(), '1');
     call dwa_test.merge_all();

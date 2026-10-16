@@ -117,11 +117,11 @@ set search_path = pg_temp, lib, public as $$
 declare
     v_change_date timestamp := clock_timestamp();
 begin
-    perform initialize('customer_metrics', 'all');
+    perform initialize(p_target_table => 'customer_metrics', p_data_slice => 'all');
 
     perform capture_delta(
-        'customers',
-        $sql$
+        p_source_table => 'customers',
+        p_sql => $sql$
             select id::text as pk_1,
                    updated_at as watermark
             from customers
@@ -129,8 +129,8 @@ begin
         $sql$
     );
     perform capture_delta(
-        'orders',
-        $sql$
+        p_source_table => 'orders',
+        p_sql => $sql$
             select customer_id::text as pk_1,
                    max(updated_at) as watermark
             from orders
@@ -139,8 +139,8 @@ begin
         $sql$
     );
     perform capture_delta(
-        'order_items',
-        $sql$
+        p_source_table => 'order_items',
+        p_sql => $sql$
             with changed_items as (
                 select order_id, updated_at
                 from order_items
@@ -206,7 +206,7 @@ begin
 
         perform finalize();
     else
-        perform prepare_batches(p_batch_size);
+        perform prepare_batches(p_batch_size => p_batch_size);
 
         while next_batch() loop
             merge into customer_metrics t

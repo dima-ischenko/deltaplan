@@ -11,7 +11,7 @@ begin
     call dwa_test.add_row('inc_test_b', 'a', 1, c_t1 + interval '1 second');
     call dwa_test.add_row('inc_test_b', 'b', 2, c_t1 + interval '1 second');
     call dwa_test.capture_both();
-    perform prepare_batches(10);
+    perform prepare_batches(p_batch_size => 10);
     if not next_batch() then
         call dwa_test.fail('one pk', 'missing batch');
     end if;

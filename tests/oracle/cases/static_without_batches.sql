@@ -16,8 +16,8 @@ begin
     pkg_dwa_test.eq('static other tracking', pkg_dwa_test.tracking_count('other_tgt'), '0');
     begin
         pkg_dwa.capture_delta(
-            'inc_test_a',
-            'select id as pk_1, updated_at as watermark from inc_test_a where updated_at > :since'
+            p_source_table => 'inc_test_a',
+            p_sql => 'select id as pk_1, updated_at as watermark from inc_test_a where updated_at > :since'
         );
         pkg_dwa_test.expect_error('static closed', -20001);
     exception
@@ -27,7 +27,7 @@ begin
             end if;
     end;
 
-    pkg_dwa.initialize(pkg_dwa_test.c_target, 'all', 0);
+    pkg_dwa.initialize(p_target_table => pkg_dwa_test.c_target, p_data_slice => 'all', p_lookback_hours => 0);
     pkg_dwa_test.capture_both;
     pkg_dwa_test.eq('static second keys', pkg_dwa_test.key_count, '0');
     pkg_dwa_test.merge_all;
@@ -40,7 +40,7 @@ begin
         updated_at = pkg_dwa_test.c_t2
     where id = '2';
 
-    pkg_dwa.initialize(pkg_dwa_test.c_target, 'all', 0);
+    pkg_dwa.initialize(p_target_table => pkg_dwa_test.c_target, p_data_slice => 'all', p_lookback_hours => 0);
     pkg_dwa_test.capture_both;
     pkg_dwa_test.eq('static delta keys', pkg_dwa_test.key_count, '1');
     pkg_dwa_test.merge_all;

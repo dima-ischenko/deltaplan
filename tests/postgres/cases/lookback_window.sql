@@ -16,7 +16,7 @@ begin
     call dwa_test.add_row('inc_test_a', 'd', 1, timestamp '2024-06-01 10:00:00');
     call dwa_test.add_row('inc_test_a', 'b', 1, timestamp '2024-06-01 11:00:00');
     call dwa_test.add_row('inc_test_a', 'c', 1, timestamp '2024-06-01 13:00:00');
-    perform initialize('inc_test_tgt', 'all', 2);
+    perform initialize(p_target_table => 'inc_test_tgt', p_data_slice => 'all', p_lookback_hours => 2);
     call dwa_test.capture_source('inc_test_a');
     call dwa_test.eq('lookback keys', dwa_test.key_count(), '2');
     call dwa_test.merge_all();

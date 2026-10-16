@@ -46,7 +46,7 @@ create or replace procedure dwa_test.reset()
 language plpgsql as $$
 begin
     set local search_path = pg_temp, lib, public;
-    perform initialize('inc_test_tgt', 'all', 0);
+    perform initialize(p_target_table => 'inc_test_tgt', p_data_slice => 'all', p_lookback_hours => 0);
     delete from dwa_keys_tmp;
     delete from dwa_batch_tmp;
     delete from dwa_log;
@@ -77,8 +77,8 @@ create or replace procedure dwa_test.capture_source(p_table text)
 language plpgsql as $$
 begin
     perform capture_delta(
-        p_table,
-        format(
+        p_source_table => p_table,
+        p_sql => format(
             'select id as pk_1, updated_at as watermark from %I where updated_at > :since',
             p_table
         )
@@ -267,7 +267,7 @@ begin
     perform finalize();
     call dwa_test.eq(l_name || ' wm', dwa_test.wm('inc_test_a'), '2024-01-15 10:00:00');
 
-    perform initialize('inc_test_tgt', 'all', 0);
+    perform initialize(p_target_table => 'inc_test_tgt', p_data_slice => 'all', p_lookback_hours => 0);
     call dwa_test.capture_source('inc_test_a');
     call dwa_test.eq(l_name || ' second keys', dwa_test.key_count(), '0');
     call dwa_test.merge_all();
@@ -280,7 +280,7 @@ begin
         updated_at = c_t2
     where id in ('1', (p_rows / 2)::text, p_rows::text);
 
-    perform initialize('inc_test_tgt', 'all', 0);
+    perform initialize(p_target_table => 'inc_test_tgt', p_data_slice => 'all', p_lookback_hours => 0);
     call dwa_test.capture_source('inc_test_a');
     call dwa_test.eq(l_name || ' delta keys', dwa_test.key_count(), '3');
     call dwa_test.merge_all();

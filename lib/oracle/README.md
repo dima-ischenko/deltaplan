@@ -8,16 +8,16 @@ Without batches, one refresh reads `dwa_keys_tmp`. The table holds only the curr
 declare
     l_change_date date := sysdate;
 begin
-    pkg_dwa.initialize('customer_metrics', 'all');
+    pkg_dwa.initialize(p_target_table => 'customer_metrics', p_data_slice => 'all');
 
-    pkg_dwa.capture_delta('customers', q'[
+    pkg_dwa.capture_delta(p_source_table => 'customers', p_sql => q'[
         select id as pk_1,
                updated_at as watermark
         from customers
         where updated_at > :since
     ]');
 
-    pkg_dwa.capture_delta('orders', q'[
+    pkg_dwa.capture_delta(p_source_table => 'orders', p_sql => q'[
         select customer_id as pk_1,
                max(updated_at) as watermark
         from orders
@@ -25,7 +25,7 @@ begin
         group by customer_id
     ]');
 
-    pkg_dwa.capture_delta('order_items', q'[
+    pkg_dwa.capture_delta(p_source_table => 'order_items', p_sql => q'[
         with changed_items as (
             select order_id, updated_at
             from order_items
@@ -38,7 +38,7 @@ begin
         group by o.customer_id
     ]');
 
-    pkg_dwa.prepare_batches(5000);
+    pkg_dwa.prepare_batches(p_batch_size => 5000);
 
     while pkg_dwa.next_batch loop
         merge into customer_metrics t

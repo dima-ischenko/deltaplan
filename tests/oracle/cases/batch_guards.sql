@@ -120,7 +120,7 @@ begin
     end;
 
     begin
-        pkg_dwa.initialize('no_such_dwa_table');
+        pkg_dwa.initialize(p_target_table => 'no_such_dwa_table');
         pkg_dwa_test.expect_error('guard missing target', -20022);
     exception
         when others then

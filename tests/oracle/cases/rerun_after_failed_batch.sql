@@ -37,7 +37,7 @@ begin
             end if;
     end;
 
-    pkg_dwa.initialize(pkg_dwa_test.c_target, 'all', 0);
+    pkg_dwa.initialize(p_target_table => pkg_dwa_test.c_target, p_data_slice => 'all', p_lookback_hours => 0);
     pkg_dwa_test.capture_source('inc_test_a');
     pkg_dwa.prepare_batches(p_batch_size => 2);
 

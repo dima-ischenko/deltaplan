@@ -9,7 +9,7 @@ begin
     select count(*)::integer into l_n from dwa_log;
     call dwa_test.eq('log empty', l_n::text, '0');
 
-    perform initialize('inc_test_tgt', 'all', 0, false, true);
+    perform initialize(p_target_table => 'inc_test_tgt', p_data_slice => 'all', p_lookback_hours => 0, p_debug => false, p_log_table => true);
     call dwa_test.add_row('inc_test_a', '1', 10, c_t1);
     call dwa_test.capture_source('inc_test_a');
     call dwa_test.merge_all();
@@ -29,7 +29,7 @@ begin
     select count(*)::integer into l_n from dwa_log where message like 'lock released name=%';
     call dwa_test.eq('log lock released', case when l_n > 0 then 'y' else 'n' end, 'y');
 
-    perform initialize('inc_test_tgt', 'all', 0, true, true);
+    perform initialize(p_target_table => 'inc_test_tgt', p_data_slice => 'all', p_lookback_hours => 0, p_debug => true, p_log_table => true);
     select count(*)::integer into l_n from dwa_log where message like 'lock acquired name=%';
     call dwa_test.eq('log lock acquired', case when l_n > 0 then 'y' else 'n' end, 'y');
     call dwa_test.capture_source('inc_test_a');

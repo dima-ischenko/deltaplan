@@ -1,13 +1,13 @@
+-- p_owner omitted: resolve the unqualified name, then store that schema.
 -- Exclusive session lock on (owner, target, slice). Another session gets DWA-20021.
 -- p_log_table writes each step to dwa_log. Off by default.
--- p_owner omitted: resolve the unqualified name, then store that schema.
 create or replace function initialize(
     p_target_table    text,
+    p_owner           text default null,
     p_data_slice      text default 'all',
     p_lookback_hours  numeric default 0,
     p_debug           boolean default false,
-    p_log_table       boolean default false,
-    p_owner           text default null
+    p_log_table       boolean default false
 )
 returns void
 language plpgsql

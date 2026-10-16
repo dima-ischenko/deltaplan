@@ -275,14 +275,14 @@ create or replace procedure run_customer_metrics(p_batch_size number default nul
             );
     end merge_batch;
 begin
-    pkg_dwa.initialize('customer_metrics', 'all');
+    pkg_dwa.initialize(p_target_table => 'customer_metrics', p_data_slice => 'all');
     capture_all;
 
     if p_batch_size is null then
         merge_keys;
         pkg_dwa.finalize;
     else
-        pkg_dwa.prepare_batches(p_batch_size);
+        pkg_dwa.prepare_batches(p_batch_size => p_batch_size);
         while pkg_dwa.next_batch loop
             merge_batch;
             pkg_dwa.finish_batch;

@@ -676,11 +676,11 @@ end get_watermark;
 
 procedure initialize(
     p_target_table    varchar2,
+    p_owner           varchar2 default null,
     p_data_slice      varchar2 default 'all',
     p_lookback_hours  number   default 0,
     p_debug           boolean  default false,
-    p_log_table       boolean  default false,
-    p_owner           varchar2 default null
+    p_log_table       boolean  default false
 ) is
     l_proc_name  varchar2(64) := get_proc_name('initialize');
     l_started    timestamp := systimestamp;
@@ -737,9 +737,9 @@ end initialize;
 
 procedure capture_delta(
     p_source_table    varchar2,
+    p_owner           varchar2 default null,
     p_sql             varchar2,
-    p_lookback_hours  number default null,
-    p_owner           varchar2 default null
+    p_lookback_hours  number default null
 ) is
     l_proc_name    varchar2(64) := get_proc_name('capture_delta');
     l_started      timestamp := systimestamp;

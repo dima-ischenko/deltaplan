@@ -7,7 +7,7 @@ begin
     call dwa_test.add_row('inc_test_a', 'a', 1, c_t1);
     call dwa_test.add_row('inc_test_a', 'b', 2, c_t1);
     call dwa_test.capture_source('inc_test_a');
-    perform prepare_batches(1);
+    perform prepare_batches(p_batch_size => 1);
     while next_batch() loop
         call dwa_test.merge_batch();
         perform finish_batch();

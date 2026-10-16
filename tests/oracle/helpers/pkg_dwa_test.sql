@@ -67,7 +67,7 @@ create or replace package body pkg_dwa_test is
         delete from inc_test_expect;
         delete from inc_test_seen;
 
-        pkg_dwa.initialize(c_target, 'all', 0);
+        pkg_dwa.initialize(p_target_table => c_target, p_data_slice => 'all', p_lookback_hours => 0);
         commit;
     end reset;
 
@@ -255,7 +255,7 @@ create or replace package body pkg_dwa_test is
         pkg_dwa.finalize;
         eq(l_name || ' wm', wm('inc_test_a'), '2024-01-15 10:00:00');
 
-        pkg_dwa.initialize(c_target, 'all', 0);
+        pkg_dwa.initialize(p_target_table => c_target, p_data_slice => 'all', p_lookback_hours => 0);
         capture_source('inc_test_a');
         eq(l_name || ' second keys', key_count, '0');
         merge_all;
@@ -272,7 +272,7 @@ create or replace package body pkg_dwa_test is
             to_char(p_rows, 'FM9999999999')
         );
 
-        pkg_dwa.initialize(c_target, 'all', 0);
+        pkg_dwa.initialize(p_target_table => c_target, p_data_slice => 'all', p_lookback_hours => 0);
         capture_source('inc_test_a');
         eq(l_name || ' delta keys', key_count, '3');
         merge_all;

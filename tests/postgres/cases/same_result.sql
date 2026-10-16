@@ -23,9 +23,9 @@ begin
     delete from dwa_watermark where target_table = 'inc_test_tgt';
     commit;
 
-    perform initialize('inc_test_tgt', 'all', 0);
+    perform initialize(p_target_table => 'inc_test_tgt', p_data_slice => 'all', p_lookback_hours => 0);
     call dwa_test.capture_both();
-    perform prepare_batches(1);
+    perform prepare_batches(p_batch_size => 1);
     while next_batch() loop
         call dwa_test.merge_batch();
         perform finish_batch();

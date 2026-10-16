@@ -16,10 +16,10 @@ begin
     call dwa_test.add_row('inc_test_a', 'a', 1, timestamp '2024-01-15 09:00:00');
     call dwa_test.add_row('inc_test_a', 'b', 1, timestamp '2024-01-15 11:00:00');
     call dwa_test.add_row('inc_test_a', 'c', 1, timestamp '2024-01-14 12:00:00');
-    perform initialize('inc_test_tgt', 'all', 0);
+    perform initialize(p_target_table => 'inc_test_tgt', p_data_slice => 'all', p_lookback_hours => 0);
     perform capture_delta(
-        'inc_test_a',
-        $sql$
+        p_source_table => 'inc_test_a',
+        p_sql => $sql$
             select id as pk_1, updated_at as watermark
             from inc_test_a
             where date_trunc('day', updated_at) >= date_trunc('day', :since)
@@ -33,8 +33,8 @@ begin
         'since missing',
         'DWA-20015',
         $sql$select capture_delta(
-            'inc_test_a',
-            'select id as pk_1, updated_at as watermark from inc_test_a'
+            p_source_table => 'inc_test_a',
+            p_sql => 'select id as pk_1, updated_at as watermark from inc_test_a'
         )$sql$
     );
     perform finalize();
@@ -42,10 +42,10 @@ begin
     call dwa_test.reset();
     call dwa_test.add_row('inc_test_a', 'a', 1, c_t1);
     call dwa_test.add_row('inc_test_a', 'b', 1, c_t1);
-    perform initialize('inc_test_tgt', 'a', 0);
+    perform initialize(p_target_table => 'inc_test_tgt', p_data_slice => 'a', p_lookback_hours => 0);
     perform capture_delta(
-        'inc_test_a',
-        $sql$
+        p_source_table => 'inc_test_a',
+        p_sql => $sql$
             select id as pk_1, updated_at as watermark
             from inc_test_a
             where id = :data_slice
