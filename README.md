@@ -28,15 +28,15 @@ Starts a run and clears `dwa_keys_tmp`. Takes an exclusive session lock on `(own
 
 A second session that calls `initialize` for the same triple gets `DWA-20021` / `-20021`. A missing or inaccessible target gets `DWA-20022` / `-20022`.
 
-### capture_delta(p_source_table, p_owner, p_sql, p_lookback_hours)
+### capture_delta(p_source_table, p_sql, p_owner, p_lookback_hours)
 
 Inserts changed keys into `dwa_keys_tmp`. The source must exist and be selectable. Watermarks are stored per source owner and name, so the same table name can be used from different schemas.
 
 | Parameter | Required | Default | Effect |
 | --- | --- | --- | --- |
 | `p_source_table` | yes | — | Unqualified source name stored with the watermark. |
-| `p_owner` | no | current schema | Schema of the source. Same default as `initialize`. |
 | `p_sql` | yes | — | Must return `pk_1` and `watermark`. `pk_2` and `pk_3` are optional. Must contain `:since`. `:data_slice` is optional; it is the slice given to `initialize`. |
+| `p_owner` | no | current schema | Schema of the source. Same default as `initialize`. |
 | `p_lookback_hours` | no | `null` | Lookback for this source. `null` uses the value from `initialize`. |
 
 `:since` is the stored watermark minus the lookback. With no stored row the bound is `2000-01-01`. `:data_slice` is the slice given to `initialize`.
@@ -124,7 +124,7 @@ On PostgreSQL the same call is `initialize`. Cross-schema sources pass `p_owner`
 
 ```sql
 pkg_dwa.initialize(p_target_table => 'customer_metrics', p_owner => 'analytics');
-pkg_dwa.capture_delta(p_source_table => 'orders', p_owner => 'sales', p_sql => '...');
+pkg_dwa.capture_delta(p_source_table => 'orders', p_sql => '...', p_owner => 'sales');
 ```
 
 ## Hard deletes

@@ -737,8 +737,8 @@ end initialize;
 
 procedure capture_delta(
     p_source_table    varchar2,
-    p_owner           varchar2 default null,
     p_sql             varchar2,
+    p_owner           varchar2 default null,
     p_lookback_hours  number default null
 ) is
     l_proc_name    varchar2(64) := get_proc_name('capture_delta');

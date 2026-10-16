@@ -2,6 +2,7 @@
 -- Previous argument orders would otherwise remain as overloads.
 drop function if exists initialize(text, text, numeric, boolean, boolean, text);
 drop function if exists initialize(text, text, numeric, boolean, text);
+drop function if exists capture_delta(text, text, text, numeric);
 drop function if exists capture_delta(text, text, numeric, text);
 
 \i lib/postgres/functions/_ensure_temp.sql
