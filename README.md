@@ -20,9 +20,9 @@ Starts a run and clears `dwa_keys_tmp`. Takes an exclusive session lock on `(own
 | Parameter | Required | Default | Effect |
 | --- | --- | --- | --- |
 | `p_target_table` | yes | — | Unqualified target being loaded. |
-| `p_data_slice` | no | `'all'` | Independent watermark slice of this target. Not a storage segment. |
-| `p_lookback_hours` | no | `0` | Hours subtracted from the stored watermark when binding `:since`. Fractions allowed. `0` binds the stored watermark. Not written to `dwa_watermark`. |
-| `p_debug` | no | `false` | Extra diagnostic queries (slice stats on capture, pk counts on finalize). Does not change what the run writes. |
+| `p_data_slice` | no | `'all'` | Independent watermark slice of this target. |
+| `p_lookback_hours` | no | `0` | Hours subtracted from the stored watermark when binding `:since`. Not written to `dwa_watermark`. |
+| `p_debug` | no | `false` | Extra diagnostic output on capture and finalize. |
 | `p_log_table` | no | `false` | Write each step to `dwa_log`. `dbms_output` / notices still print. On Oracle the insert is an autonomous transaction, so a rollback of the run keeps the log. PostgreSQL and Greenplum have no analog: the row lives in the caller's transaction. |
 | `p_owner` | no | current schema | Schema of the target. Oracle uses `sys_context('USERENV', 'CURRENT_SCHEMA')`. PostgreSQL resolves an omitted owner from the install schema / `public`. |
 
@@ -35,11 +35,11 @@ Inserts changed keys into `dwa_keys_tmp`. The source must exist and be selectabl
 | Parameter | Required | Default | Effect |
 | --- | --- | --- | --- |
 | `p_source_table` | yes | — | Unqualified source name stored with the watermark. |
-| `p_sql` | yes | — | Must return `pk_1` and `watermark`. `pk_2` and `pk_3` are optional. Must contain `:since` at least once. Repeat it for a truncated-day predicate next to `value > :since`. `:data_slice` is optional; it is the slice given to `initialize`. |
+| `p_sql` | yes | — | Must return `pk_1` and `watermark`. `pk_2` and `pk_3` are optional. Must contain `:since`. `:data_slice` is optional; it is the slice given to `initialize`. |
 | `p_lookback_hours` | no | `null` | Lookback for this source. `null` uses the value from `initialize`. |
 | `p_owner` | no | current schema | Schema of the source. Same default as `initialize`. |
 
-`:since` is the stored watermark minus the lookback. With no stored row the bound is `2000-01-01`. `:data_slice` is the slice given to `initialize`. Slice is optional: the default `'all'` needs no filter.
+`:since` is the stored watermark minus the lookback. With no stored row the bound is `2000-01-01`. `:data_slice` is the slice given to `initialize`.
 
 ### prepare_batches(p_batch_size [, p_commit_batch])
 
@@ -115,7 +115,6 @@ pkg_dwa.capture_delta('orders', q'[
            max(updated_at) as watermark
     from orders
     where country_code = :data_slice
-      and trunc(updated_at) >= trunc(:since)
       and updated_at > :since
     group by customer_id
 ]');

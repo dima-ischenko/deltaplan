@@ -111,8 +111,8 @@ comment on column dwa_watermark.target_owner is
 comment on column dwa_watermark.source_owner is
     'Schema of the source table. Defaults to the current schema when omitted.';
 comment on column dwa_watermark.data_slice is
-    'Independent watermark slice of this target. Not a storage segment.';
+    'Independent watermark slice of this target.';
 comment on column dwa_watermark.watermark is
-    'Greatest source value fully applied for this target, slice and source. The read bound is this value minus the lookback, and that bound is not stored.';
+    'Greatest source value fully applied for this target, slice and source.';
 comment on column dwa_watermark.updated_at is
     'When finalize last wrote this row.';

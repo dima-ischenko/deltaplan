@@ -1,8 +1,6 @@
 -- p_lookback_hours null takes the value given to initialize.
--- p_sql must contain :since at least once. Repeat the same placeholder when a
--- truncated-day predicate should sit beside the exact watermark filter.
--- :data_slice is optional; it is the slice given to initialize.
--- The :since placeholder is already the watermark minus the lookback offset.
+-- p_sql must contain :since. :data_slice is optional.
+-- :since is the stored watermark minus the lookback.
 -- The statement must return pk_1 and watermark. pk_2 and pk_3 are optional.
 -- p_owner defaults to the current schema. The source must exist and be selectable.
 create or replace function capture_delta(

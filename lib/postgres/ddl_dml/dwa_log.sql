@@ -64,6 +64,6 @@ comment on table dwa_log is
 comment on column dwa_log.target_owner is
     'Schema of the target table at that step.';
 comment on column dwa_log.data_slice is
-    'Watermark slice of the run. Not a storage segment.';
+    'Watermark slice of the run.';
 comment on column dwa_log.message is
     'Same text as the notice, without the timestamp prefix.';
