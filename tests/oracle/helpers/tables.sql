@@ -10,6 +10,10 @@ begin execute immediate 'drop table inc_test_b purge'; exception when others the
 /
 begin execute immediate 'drop table inc_test_a purge'; exception when others then if sqlcode != -942 then raise; end if; end;
 /
+begin execute immediate 'drop table inc_test_debt purge'; exception when others then if sqlcode != -942 then raise; end if; end;
+/
+begin execute immediate 'drop table inc_test_roll purge'; exception when others then if sqlcode != -942 then raise; end if; end;
+/
 
 create table inc_test_a (
     id         varchar2(10) not null,
@@ -38,4 +42,20 @@ create table inc_test_expect (
 create table inc_test_seen (
     batch_no number not null,
     id       varchar2(10) not null
+);
+
+-- Open rows (closed_at is null) are recaptured every run. deleted_at is a tombstone.
+create table inc_test_roll (
+    id         varchar2(10) not null,
+    amount     number not null,
+    updated_at date not null,
+    closed_at  date,
+    deleted_at date,
+    constraint pk_inc_test_roll primary key (id)
+);
+create table inc_test_debt (
+    id     varchar2(10) not null,
+    as_of  date not null,
+    amount number not null,
+    constraint pk_inc_test_debt primary key (id)
 );

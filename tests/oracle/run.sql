@@ -49,6 +49,7 @@ end;
 @tests/oracle/cases/one_pk_one_batch.sql
 @tests/oracle/cases/rollback_without_commit.sql
 @tests/oracle/cases/volume.sql
+@tests/oracle/cases/rolling_and_soft_delete.sql
 
 begin
     dbms_output.put_line('pkg_dwa_test: passed');

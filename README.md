@@ -131,6 +131,21 @@ pkg_dwa.capture_delta(p_source_table => 'orders', p_sql => '...', p_owner => 'sa
 
 Not supported. A physical `DELETE` never reaches `dwa_keys_tmp`. To drop a target row, keep a source row whose watermark still moves (flag, tombstone, audit) and delete it in the refresh SQL.
 
+## Soft deletes
+
+Set the tombstone and a watermark column together (`deleted_at`, or `mt_sync_at` moved to the same moment) and return that column as `watermark`. The refresh deletes the target row for that key. The next run does not see it: the stored watermark is already at the delete. Clearing the flag on a row that the capture SQL also selects for another reason (an open key, below) puts the target row back. The stale source watermark on that row does not move `dwa_watermark` backwards.
+
+## Rolling keys
+
+A target that is rebuilt through the current day for rows still open (`closed_at` / `date_to` is null) must select those keys even when their source watermark is older than `:since`:
+
+```sql
+where deleted_at is null
+  and (updated_at > :since or closed_at is null)
+```
+
+Return the row's real source watermark, not the reporting day. `finalize` stores `max(watermark)` per source and never replaces a newer stored value with an older one, so the open keys do not pull the watermark back and closed keys stay out of the next run. With batches the refresh reads `dwa_batch_tmp`: one key is one batch member, and the statement must not use the rest of `dwa_keys_tmp`.
+
 ## Tests
 
 ```bash
