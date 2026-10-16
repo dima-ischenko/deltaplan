@@ -2,23 +2,23 @@
 create or replace function _norm_ident(p_name text, p_label text)
 returns text
 language plpgsql
-set search_path = pg_catalog, :"dwv_schema" as $$
+set search_path = pg_catalog, :"dwa_schema" as $$
 declare
 l_name text;
 begin
   if p_name is null then
-    raise exception 'DWV-20006 % is required', p_label;
+    raise exception 'DWA-20006 % is required', p_label;
   end if;
 
   l_name := lower(trim(p_name));
   if l_name is null or length(l_name) = 0 then
-    raise exception 'DWV-20006 % is required', p_label;
+    raise exception 'DWA-20006 % is required', p_label;
   end if;
   if position('.' in l_name) > 0 then
-    raise exception 'DWV-20006 % must be unqualified; pass p_owner for the schema', p_label;
+    raise exception 'DWA-20006 % must be unqualified; pass p_owner for the schema', p_label;
   end if;
   if l_name !~ '^[a-z][a-z0-9_#$]*$' then
-    raise exception 'DWV-20022 invalid % %', p_label, p_name;
+    raise exception 'DWA-20022 invalid % %', p_label, p_name;
   end if;
 
   return l_name;
@@ -29,19 +29,19 @@ $$;
 create or replace function _assert_relation(p_owner text, p_table text)
 returns void
 language plpgsql
-set search_path = pg_catalog, :"dwv_schema" as $$
+set search_path = pg_catalog, :"dwa_schema" as $$
 declare
 l_reg regclass;
 begin
   l_reg := to_regclass(format('%I.%I', p_owner, p_table));
   if l_reg is null then
     raise exception
-      'DWV-20022 table %.% does not exist or is not available',
+      'DWA-20022 table %.% does not exist or is not available',
       p_owner, p_table;
   end if;
   if not has_table_privilege(l_reg, 'SELECT') then
     raise exception
-      'DWV-20022 table %.% does not exist or is not available',
+      'DWA-20022 table %.% does not exist or is not available',
       p_owner, p_table;
   end if;
 end;
@@ -58,7 +58,7 @@ create or replace function _qualify_relation(
     out o_table text
 )
 language plpgsql
-set search_path = :"dwv_schema", public as $$
+set search_path = :"dwa_schema", public as $$
 declare
 l_reg  regclass;
 l_trim text := lower(trim(p_owner));
@@ -84,13 +84,13 @@ begin
 
   if l_reg is null then
     raise exception
-      'DWV-20022 table % does not exist or is not available',
+      'DWA-20022 table % does not exist or is not available',
       o_table;
   end if;
 
   if not has_table_privilege(l_reg, 'SELECT') then
     raise exception
-      'DWV-20022 table %.% does not exist or is not available',
+      'DWA-20022 table %.% does not exist or is not available',
       o_owner, o_table;
   end if;
 end;

@@ -1,4 +1,4 @@
-create or replace package body pkg_dwv is
+create or replace package body pkg_dwa is
 
 gv_target_owner    varchar2(128);
 gv_target_table    varchar2(128);
@@ -37,7 +37,7 @@ c_lock_illegal     constant number := 5;
 
 function get_proc_name(p_proc_name varchar2) return varchar2 is
 begin
-    return 'pkg_dwv.' || p_proc_name;
+    return 'pkg_dwa.' || p_proc_name;
 end get_proc_name;
 
 function fmt_date(p_date date) return varchar2 is
@@ -156,7 +156,7 @@ procedure write_log_row(
 ) is
     pragma autonomous_transaction;
 begin
-    insert into dwv_log (
+    insert into dwa_log (
         logged_at,
         proc_name,
         target_owner,
@@ -261,7 +261,7 @@ function unfinished_batches return number is
 begin
     select count(*)
     into l_left
-    from dwv_keys_tmp
+    from dwa_keys_tmp
     where batch_no is not null
       and batch_done = 0
       and rownum = 1;
@@ -298,7 +298,7 @@ begin
 
     select count(*)
     into l_open
-    from dwv_batch_tmp
+    from dwa_batch_tmp
     where rownum = 1;
 
     if l_open > 0 then
@@ -352,7 +352,7 @@ function run_lock_name(
     p_slice   varchar2
 ) return varchar2 is
 begin
-    return substr('DWV|' || p_owner || '.' || p_target || '|' || p_slice, 1, 128);
+    return substr('DWA|' || p_owner || '.' || p_target || '|' || p_slice, 1, 128);
 end run_lock_name;
 
 function allocate_lock_handle(p_name varchar2) return varchar2 is
@@ -452,7 +452,7 @@ function get_watermark(
 begin
     select max(watermark)
     into l_result
-    from dwv_watermark
+    from dwa_watermark
     where target_owner = gv_target_owner
       and target_table = gv_target_table
       and source_owner = p_source_owner
@@ -504,10 +504,10 @@ begin
     gv_commit_batch := true;
     gv_batches_ready := false;
 
-    delete from dwv_keys_tmp;
+    delete from dwa_keys_tmp;
     l_rows := sql%rowcount;
 
-    delete from dwv_batch_tmp;
+    delete from dwa_batch_tmp;
     l_batch_rows := sql%rowcount;
 
     i_log(
@@ -611,7 +611,7 @@ begin
     begin
     l_insert_sql := '
         begin
-            insert into dwv_keys_tmp (
+            insert into dwa_keys_tmp (
                 source_owner,
                 source_table,
                 pk_1,
@@ -643,7 +643,7 @@ begin
             select count(*) cnt,
                    min(watermark) min_wm,
                    max(watermark) max_wm
-            from dwv_keys_tmp
+            from dwa_keys_tmp
             where source_owner = l_source_owner
               and source_table = l_source_table
             group by pk_1, pk_2, pk_3
@@ -706,12 +706,12 @@ begin
 
     select count(*)
     into l_key_total
-    from dwv_keys_tmp
+    from dwa_keys_tmp
     where rownum = 1;
 
     select count(*)
     into l_assigned
-    from dwv_keys_tmp
+    from dwa_keys_tmp
     where batch_no is not null
       and rownum = 1;
 
@@ -745,7 +745,7 @@ begin
 
     begin
         if l_assigned = 0 then
-            merge into dwv_keys_tmp t
+            merge into dwa_keys_tmp t
             using (
                 select pk_1,
                        pk_2,
@@ -755,7 +755,7 @@ begin
                        ) / l_batch_size) as batch_no
                 from (
                     select distinct pk_1, pk_2, pk_3
-                    from dwv_keys_tmp
+                    from dwa_keys_tmp
                 )
             ) s
             on (t.pk_1 = s.pk_1
@@ -787,7 +787,7 @@ begin
 
         select nvl(max(batch_no), 0)
         into l_total
-        from dwv_keys_tmp;
+        from dwa_keys_tmp;
 
         gv_batch_total := l_total;
         l_left := unfinished_batches;
@@ -805,11 +805,11 @@ end prepare_batches;
 
 procedure load_batch_keys(p_batch_no number, p_keys out number) is
 begin
-    delete from dwv_batch_tmp;
+    delete from dwa_batch_tmp;
 
-    insert into dwv_batch_tmp (pk_1, pk_2, pk_3)
+    insert into dwa_batch_tmp (pk_1, pk_2, pk_3)
     select distinct pk_1, pk_2, pk_3
-    from dwv_keys_tmp
+    from dwa_keys_tmp
     where batch_no = p_batch_no
       and batch_done = 0;
 
@@ -833,7 +833,7 @@ begin
     begin
         select min(batch_no)
         into l_next
-        from dwv_keys_tmp
+        from dwa_keys_tmp
         where batch_no is not null
           and batch_done = 0;
 
@@ -878,7 +878,7 @@ begin
     end if;
 
     begin
-        update dwv_keys_tmp
+        update dwa_keys_tmp
         set batch_done = 1
         where batch_no = l_batch_no
           and batch_done = 0;
@@ -892,7 +892,7 @@ begin
         if gv_commit_batch then
             commit;
         else
-            delete from dwv_batch_tmp;
+            delete from dwa_batch_tmp;
         end if;
 
         gv_batch_no := null;
@@ -925,7 +925,7 @@ begin
         l_left := unfinished_batches;
         select count(*)
         into l_unassigned
-        from dwv_keys_tmp
+        from dwa_keys_tmp
         where batch_no is null
           and rownum = 1;
     end if;
@@ -942,7 +942,7 @@ begin
 
     gv_batches_ready := false;
 
-    merge into dwv_watermark t
+    merge into dwa_watermark t
     using (
         select gv_target_owner as target_owner,
                gv_target_table as target_table,
@@ -950,7 +950,7 @@ begin
                source_owner,
                source_table,
                max(watermark) as watermark
-        from dwv_keys_tmp
+        from dwa_keys_tmp
         group by source_owner, source_table
     ) s
     on (t.target_owner = s.target_owner
@@ -979,7 +979,7 @@ begin
         into l_all_pk
         from (
             select distinct pk_1, pk_2, pk_3
-            from dwv_keys_tmp
+            from dwa_keys_tmp
         );
     end if;
 
@@ -991,7 +991,7 @@ begin
         || ' ' || fmt_num(round(seconds_since(l_started), 3)) || 's'
     );
 
-    delete from dwv_batch_tmp;
+    delete from dwa_batch_tmp;
 
     release_run_lock;
     gv_target_owner := null;
@@ -1010,4 +1010,4 @@ exception
         raise;
 end finalize;
 
-end pkg_dwv;
+end pkg_dwa;

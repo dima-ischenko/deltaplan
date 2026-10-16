@@ -11,6 +11,7 @@ declare
             end if;
     end;
 begin
-    drop_pkg('pkg_dwv');
+    drop_pkg('pkg_dwa');
+    drop_pkg('pkg_dwa');
 end;
 /

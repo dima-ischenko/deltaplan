@@ -1,7 +1,7 @@
 -- Install into an existing schema.
 -- From the repository root:
 --   psql -v ON_ERROR_STOP=1 -f lib/postgres/deploy.sql
---   psql -v ON_ERROR_STOP=1 -v dwv_schema=analytics -f lib/postgres/deploy.sql
+--   psql -v ON_ERROR_STOP=1 -v dwa_schema=analytics -f lib/postgres/deploy.sql
 -- psql resolves \i against the working directory.
 \i lib/postgres/_install_schema.sql
 \i lib/postgres/deploy_structure.sql

@@ -1,6 +1,6 @@
 -- Incremental load of customer_metrics.
 -- Capture keys that moved, refresh those keys in batches, then move the watermark.
--- dwv prints a notice for each step.
+-- dwa prints a notice for each step.
 --
 -- MERGE needs PostgreSQL 15+. Greenplum has no MERGE: use UPDATE then INSERT,
 -- as in lib/postgres/README.md.
@@ -60,7 +60,7 @@ begin
         using (
             with changed as (
                 select pk_1::integer as customer_id
-                from dwv_batch_tmp
+                from dwa_batch_tmp
                 group by pk_1
             ),
             order_amount as (

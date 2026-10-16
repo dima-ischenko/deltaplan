@@ -1,7 +1,7 @@
 create or replace function _ensure_temp()
 returns void
 language plpgsql
-set search_path = pg_temp, :"dwv_schema", public as $$
+set search_path = pg_temp, :"dwa_schema", public as $$
 declare
 l_by_id  text := '';
 l_by_pk  text := '';
@@ -13,28 +13,28 @@ begin
   end if;
 
   -- Older sessions used data_segment and had no target_owner.
-  if to_regclass('dwv_session_tmp') is not null
+  if to_regclass('dwa_session_tmp') is not null
    and (
      exists (
        select 1
        from pg_attribute
-       where attrelid = to_regclass('dwv_session_tmp')
+       where attrelid = to_regclass('dwa_session_tmp')
          and attname = 'data_segment'
          and not attisdropped
      )
      or not exists (
        select 1
        from pg_attribute
-       where attrelid = to_regclass('dwv_session_tmp')
+       where attrelid = to_regclass('dwa_session_tmp')
          and attname = 'target_owner'
          and not attisdropped
      )
    ) then
-    drop table dwv_session_tmp;
+    drop table dwa_session_tmp;
   end if;
 
   execute format($sql$
-    create temp table if not exists dwv_session_tmp (
+    create temp table if not exists dwa_session_tmp (
       id              int primary key,
       target_owner    text,
       target_table    text,
@@ -45,46 +45,46 @@ begin
       batches_ready   boolean,
       debug           boolean not null default false,
       log_table       boolean not null default false,
-      constraint ck_dwv_session_tmp_id check (id = 1)
+      constraint ck_dwa_session_tmp_id check (id = 1)
     ) on commit preserve rows%s
   $sql$, l_by_id);
 
-  if to_regclass('dwv_session_tmp') is not null
+  if to_regclass('dwa_session_tmp') is not null
    and not exists (
      select 1
      from pg_attribute
-     where attrelid = to_regclass('dwv_session_tmp')
+     where attrelid = to_regclass('dwa_session_tmp')
       and attname = 'debug'
       and not attisdropped
    ) then
-    alter table dwv_session_tmp add column debug boolean not null default false;
-    alter table dwv_session_tmp add column log_table boolean not null default false;
+    alter table dwa_session_tmp add column debug boolean not null default false;
+    alter table dwa_session_tmp add column log_table boolean not null default false;
   end if;
 
   -- An older session may still have target_table on the keys table, or
   -- lack source_owner. Those belong in session / a dedicated column.
-  if to_regclass('dwv_keys_tmp') is not null
+  if to_regclass('dwa_keys_tmp') is not null
    and (
      exists (
        select 1
        from pg_attribute
-       where attrelid = to_regclass('dwv_keys_tmp')
+       where attrelid = to_regclass('dwa_keys_tmp')
          and attname = 'target_table'
          and not attisdropped
      )
      or not exists (
        select 1
        from pg_attribute
-       where attrelid = to_regclass('dwv_keys_tmp')
+       where attrelid = to_regclass('dwa_keys_tmp')
          and attname = 'source_owner'
          and not attisdropped
      )
    ) then
-    drop table dwv_keys_tmp;
+    drop table dwa_keys_tmp;
   end if;
 
   execute format($sql$
-    create temp table if not exists dwv_keys_tmp (
+    create temp table if not exists dwa_keys_tmp (
       source_owner    text        not null,
       source_table    text        not null,
       pk_1            text        not null,
@@ -93,19 +93,19 @@ begin
       watermark       timestamp   not null,
       batch_no        numeric,
       batch_done      smallint    not null default 0,
-      constraint ck_dwv_keys_tmp_done check (batch_done in (0, 1))
+      constraint ck_dwa_keys_tmp_done check (batch_done in (0, 1))
     ) on commit preserve rows%s
   $sql$, l_by_pk);
 
   execute format($sql$
-    create temp table if not exists dwv_batch_tmp (
+    create temp table if not exists dwa_batch_tmp (
       pk_1            text        not null,
       pk_2            text,
       pk_3            text
     ) on commit delete rows%s
   $sql$, l_by_pk);
 
-  create index if not exists idx_dwv_keys_tmp_batch
-    on dwv_keys_tmp (batch_no, batch_done);
+  create index if not exists idx_dwa_keys_tmp_batch
+    on dwa_keys_tmp (batch_no, batch_done);
 end;
 $$;

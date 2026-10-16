@@ -1,4 +1,4 @@
-# A private pair of databases for dwv. Host ports are 1522 and 5434
+# A private pair of databases for dwa. Host ports are 1522 and 5434
 # so this stack can run beside another Oracle on 1521 and another Postgres on 5433.
 #
 #   docker compose -f tests/docker/docker-compose.yml up --wait
@@ -9,7 +9,7 @@
 services:
   oracle:
     image: gvenzl/oracle-free:23.26.1-slim-faststart
-    container_name: dwv-oracle
+    container_name: dwa-oracle
     ports:
       - "1522:1521"
     environment:
@@ -26,7 +26,7 @@ services:
 
   postgres:
     image: postgres:15.4
-    container_name: dwv-postgres
+    container_name: dwa-postgres
     ports:
       - "5434:5432"
     environment:

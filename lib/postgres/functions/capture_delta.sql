@@ -11,7 +11,7 @@ create or replace function capture_delta(
 )
 returns void
 language plpgsql
-set search_path = pg_temp, :"dwv_schema", public as $$
+set search_path = pg_temp, :"dwa_schema", public as $$
 declare
 l_source_owner text;
 l_source   text;
@@ -32,17 +32,17 @@ l_slice_pk   bigint;
 l_min        timestamp;
 l_max        timestamp;
 begin
-  if to_regclass('dwv_session_tmp') is null then
-    raise exception 'DWV-20001 Call initialize first';
+  if to_regclass('dwa_session_tmp') is null then
+    raise exception 'DWA-20001 Call initialize first';
   end if;
 
   select target_owner, target_table, data_slice, lookback_hours, batches_ready
   into l_target_owner, l_target, l_slice, l_lookback, l_ready
-  from dwv_session_tmp
+  from dwa_session_tmp
   where id = 1;
 
   if l_target is null then
-    raise exception 'DWV-20001 Call initialize first';
+    raise exception 'DWA-20001 Call initialize first';
   end if;
 
   select q.o_owner, q.o_table
@@ -50,7 +50,7 @@ begin
   from _qualify_relation(p_owner, p_source_table, 'source_table') q;
 
   if p_sql is null or length(p_sql) = 0 then
-    raise exception 'DWV-20006 capture sql is required';
+    raise exception 'DWA-20006 capture sql is required';
   end if;
 
   -- \M is the end of a word, so :since2 does not count.
@@ -59,25 +59,25 @@ begin
   from regexp_matches(lower(p_sql), ':since\M', 'g');
 
   if l_count <> 1 then
-    raise exception 'DWV-20015 capture SQL must contain :since exactly once';
+    raise exception 'DWA-20015 capture SQL must contain :since exactly once';
   end if;
 
   l_lookback := coalesce(p_lookback_hours, l_lookback, 0);
   if l_lookback < 0 then
-    raise exception 'DWV-20002 lookback_hours must be >= 0';
+    raise exception 'DWA-20002 lookback_hours must be >= 0';
   end if;
 
   if l_ready then
-    raise exception 'DWV-20013 capture_delta is closed after prepare_batches until finalize';
+    raise exception 'DWA-20013 capture_delta is closed after prepare_batches until finalize';
   end if;
 
   if _unfinished() > 0 then
-    raise exception 'DWV-20013 capture_delta is closed after prepare_batches until finalize';
+    raise exception 'DWA-20013 capture_delta is closed after prepare_batches until finalize';
   end if;
 
   select max(watermark)
   into l_stored
-  from dwv_watermark
+  from dwa_watermark
   where target_owner = l_target_owner
    and target_table = l_target
    and source_owner = l_source_owner
@@ -94,7 +94,7 @@ begin
   exception
     when undefined_column then
       if position('pk_1' in lower(sqlerrm)) > 0 then
-        raise exception 'DWV-20020 capture SQL must return pk_1 and watermark; pk_2 and pk_3 are optional';
+        raise exception 'DWA-20020 capture SQL must return pk_1 and watermark; pk_2 and pk_3 are optional';
       end if;
       raise;
 end;
@@ -104,7 +104,7 @@ end;
   exception
     when undefined_column then
       if position('watermark' in lower(sqlerrm)) > 0 then
-        raise exception 'DWV-20020 capture SQL must return pk_1 and watermark; pk_2 and pk_3 are optional';
+        raise exception 'DWA-20020 capture SQL must return pk_1 and watermark; pk_2 and pk_3 are optional';
       end if;
       raise;
 end;
@@ -132,7 +132,7 @@ end;
 end;
 
   execute
-    'insert into dwv_keys_tmp (
+    'insert into dwa_keys_tmp (
       source_owner, source_table, pk_1, pk_2, pk_3, watermark
     )
     select $2, $3, s.pk_1, ' || l_pk2 || ', ' || l_pk3 || ', s.watermark
@@ -151,7 +151,7 @@ end;
       select count(*) cnt,
          min(watermark) min_wm,
          max(watermark) max_wm
-      from dwv_keys_tmp
+      from dwa_keys_tmp
       where source_owner = l_source_owner
         and source_table = l_source
       group by pk_1, pk_2, pk_3

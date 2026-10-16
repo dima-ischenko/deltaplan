@@ -1,4 +1,4 @@
--- Exclusive session lock on (owner, target, slice). Another session gets DWV-20021.
+-- Exclusive session lock on (owner, target, slice). Another session gets DWA-20021.
 -- p_owner omitted: resolve the unqualified name, then store that schema.
 create or replace function initialize(
     p_target_table    text,
@@ -9,7 +9,7 @@ create or replace function initialize(
 )
 returns void
 language plpgsql
-set search_path = pg_temp, :"dwv_schema", public as $$
+set search_path = pg_temp, :"dwa_schema", public as $$
 declare
 l_owner   text;
 l_target  text;
@@ -18,7 +18,7 @@ l_lookback    numeric := coalesce(p_lookback_hours, 0);
 l_rows    bigint;
 begin
   if l_lookback < 0 then
-    raise exception 'DWV-20002 lookback_hours must be >= 0';
+    raise exception 'DWA-20002 lookback_hours must be >= 0';
   end if;
 
   select q.o_owner, q.o_table
@@ -27,7 +27,7 @@ begin
 
   perform _ensure_temp();
 
-  insert into dwv_session_tmp (
+  insert into dwa_session_tmp (
     id, target_owner, target_table, data_slice, lookback_hours,
     batch_no, batch_size, batches_ready, debug
   ) values (
@@ -46,10 +46,10 @@ begin
 
   perform _acquire_run_lock(l_owner, l_target, l_slice);
 
-  delete from dwv_keys_tmp;
+  delete from dwa_keys_tmp;
   get diagnostics l_rows = row_count;
 
-  delete from dwv_batch_tmp;
+  delete from dwa_batch_tmp;
 
   perform _log(
     'initialize',

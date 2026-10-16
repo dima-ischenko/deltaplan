@@ -3,8 +3,9 @@
 -- psql "postgresql://user:password@localhost:5432/db" -v ON_ERROR_STOP=1 -f tests/postgres/run.sql
 
 \set ON_ERROR_STOP on
-\set dwv_schema lib
-drop schema if exists dwv_test cascade;
+\set dwa_schema lib
+drop schema if exists dwa_test cascade;
+drop schema if exists dwa_test cascade;
 drop schema if exists lib cascade;
 create schema lib;
 \i lib/postgres/rollback.sql
@@ -14,7 +15,7 @@ set search_path to lib, public;
 \i tests/postgres/helpers/tables.sql
 \i tests/postgres/helpers/helpers.sql
 
-delete from dwv_watermark
+delete from dwa_watermark
 where target_table in ('inc_test_tgt', 'other_tgt');
 
 \i tests/postgres/cases/static_without_batches.sql
@@ -28,14 +29,14 @@ where target_table in ('inc_test_tgt', 'other_tgt');
 \i tests/postgres/cases/rollback_without_commit.sql
 \i tests/postgres/cases/volume.sql
 
-do $$ begin raise notice 'dwv_test: passed'; end; $$;
+do $$ begin raise notice 'dwa_test: passed'; end; $$;
 
 \i tests/postgres/helpers/metrics_tables.sql
 \i tests/postgres/helpers/run_metrics.sql
 \i tests/postgres/cases/metrics_same_result.sql
 \i tests/postgres/cases/metrics_silent_dml.sql
 
-delete from dwv_watermark
+delete from dwa_watermark
 where target_table = 'customer_metrics';
 
 \i demo/postgres/tables.sql
@@ -51,7 +52,7 @@ begin
     select count(*) into l_metrics from customer_metrics;
     select count(*)
     into l_wm
-    from dwv_watermark
+    from dwa_watermark
     where target_table = 'customer_metrics'
       and data_slice = 'all';
 

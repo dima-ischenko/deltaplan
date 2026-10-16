@@ -1,4 +1,4 @@
--- Fixture tables. Named in static SQL inside pkg_dwv_test, so they must
+-- Fixture tables. Named in static SQL inside pkg_dwa_test, so they must
 -- exist before that package compiles.
 begin execute immediate 'drop table inc_test_seen purge'; exception when others then if sqlcode != -942 then raise; end if; end;
 /

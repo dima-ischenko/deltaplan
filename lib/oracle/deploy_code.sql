@@ -1,5 +1,5 @@
 ------- packages
-@lib/oracle/packages/pkg_dwv_s.sql
+@lib/oracle/packages/pkg_dwa_s.sql
 /
-@lib/oracle/packages/pkg_dwv_b.sql
+@lib/oracle/packages/pkg_dwa_b.sql
 /

@@ -1,6 +1,6 @@
-# Deltawave (DWV)
+# Deltawave (DWA)
 
-Incremental load of a target table on Oracle and PostgreSQL. dwv stores a watermark per source, captures the keys that moved, and leaves the refresh SQL to you. A watermark never moves backwards.
+Incremental load of a target table on Oracle and PostgreSQL. dwa stores a watermark per source, captures the keys that moved, and leaves the refresh SQL to you. A watermark never moves backwards.
 
 - Oracle: [deploy](lib/oracle/deploy.md), [call](lib/oracle/README.md)
 - PostgreSQL and Greenplum: [deploy](lib/postgres/deploy.md), [call](lib/postgres/README.md)
@@ -9,27 +9,27 @@ Try it from [`demo/`](demo/README.md).
 
 ## API
 
-On Oracle the entry point is `pkg_dwv`. On PostgreSQL the same names are functions in the install schema (`perform` from PL/pgSQL).
+On Oracle the entry point is `pkg_dwa`. On PostgreSQL the same names are functions in the install schema (`perform` from PL/pgSQL).
 
 A run is `initialize` -> `capture_delta` per source -> refresh SQL -> `finalize`. Batches are optional: `prepare_batches`, then `next_batch` / refresh / `finish_batch`.
 
 ### initialize(p_target_table, p_data_slice, p_lookback_hours, p_debug, p_owner)
 
-Starts a run and clears `dwv_keys_tmp`. Takes an exclusive session lock on `(owner, target_table, data_slice)` so a second session cannot start the same slice. The lock survives `COMMIT` (including `finish_batch`) and is released in `finalize`, or when the session ends. Repeat `initialize` in the same session after a failure is allowed. A different `p_data_slice` of the same target can run in parallel. The target must exist and be selectable.
+Starts a run and clears `dwa_keys_tmp`. Takes an exclusive session lock on `(owner, target_table, data_slice)` so a second session cannot start the same slice. The lock survives `COMMIT` (including `finish_batch`) and is released in `finalize`, or when the session ends. Repeat `initialize` in the same session after a failure is allowed. A different `p_data_slice` of the same target can run in parallel. The target must exist and be selectable.
 
 | Parameter | Required | Default | Effect |
 | --- | --- | --- | --- |
 | `p_target_table` | yes | — | Unqualified target being loaded. |
 | `p_data_slice` | no | `'all'` | Independent watermark slice of this target. Not a storage segment. |
-| `p_lookback_hours` | no | `0` | Hours subtracted from the stored watermark when binding `:since`. Fractions allowed. `0` binds the stored watermark. Not written to `dwv_watermark`. |
+| `p_lookback_hours` | no | `0` | Hours subtracted from the stored watermark when binding `:since`. Fractions allowed. `0` binds the stored watermark. Not written to `dwa_watermark`. |
 | `p_debug` | no | `false` | Extra diagnostic queries (slice stats on capture, pk counts on finalize). Does not change what the run writes. |
 | `p_owner` | no | current schema | Schema of the target. Oracle uses `sys_context('USERENV', 'CURRENT_SCHEMA')`. PostgreSQL resolves an omitted owner from the install schema / `public`. |
 
-A second session that calls `initialize` for the same triple gets `DWV-20021` / `-20021`. A missing or inaccessible target gets `DWV-20022` / `-20022`.
+A second session that calls `initialize` for the same triple gets `DWA-20021` / `-20021`. A missing or inaccessible target gets `DWA-20022` / `-20022`.
 
 ### capture_delta(p_source_table, p_sql, p_lookback_hours, p_owner)
 
-Inserts changed keys into `dwv_keys_tmp`. The source must exist and be selectable. Watermarks are stored per source owner and name, so the same table name can be used from different schemas.
+Inserts changed keys into `dwa_keys_tmp`. The source must exist and be selectable. Watermarks are stored per source owner and name, so the same table name can be used from different schemas.
 
 | Parameter | Required | Default | Effect |
 | --- | --- | --- | --- |
@@ -42,7 +42,7 @@ Inserts changed keys into `dwv_keys_tmp`. The source must exist and be selectabl
 
 ### prepare_batches(p_batch_size [, p_commit_batch])
 
-Numbers distinct keys. Skip it to refresh every key from `dwv_keys_tmp` in one statement.
+Numbers distinct keys. Skip it to refresh every key from `dwa_keys_tmp` in one statement.
 
 | Parameter | Required | Default | Effect |
 | --- | --- | --- | --- |
@@ -51,7 +51,7 @@ Numbers distinct keys. Skip it to refresh every key from `dwv_keys_tmp` in one s
 
 ### next_batch() -> boolean
 
-Loads the next unfinished batch into `dwv_batch_tmp`. Returns true while a batch is open, false when none remain. Call `prepare_batches` first. Do not commit between `next_batch` and `finish_batch`: that empties `dwv_batch_tmp`.
+Loads the next unfinished batch into `dwa_batch_tmp`. Returns true while a batch is open, false when none remain. Call `prepare_batches` first. Do not commit between `next_batch` and `finish_batch`: that empties `dwa_batch_tmp`.
 
 ### finish_batch([p_merged])
 
@@ -78,15 +78,15 @@ No parameters. Return `null` when no run is open.
 | `get_data_slice()` | Slice of the current run. Use it in capture and refresh SQL. |
 | `get_batch_no()` | Open batch number, or `null`. |
 
-`set_log_table([true])` / `set_log_table(false)` writes each step to `dwv_log`. Off by default. `dbms_output` / notices still print. On Oracle the insert is an autonomous transaction, so a rollback of the run keeps the log. PostgreSQL and Greenplum have no analog: the row lives in the caller's transaction.
+`set_log_table([true])` / `set_log_table(false)` writes each step to `dwa_log`. Off by default. `dbms_output` / notices still print. On Oracle the insert is an autonomous transaction, so a rollback of the run keeps the log. PostgreSQL and Greenplum have no analog: the row lives in the caller's transaction.
 
-Without batches the refresh reads `dwv_keys_tmp`. The table holds only the current run; target and slice are session state (`get_target_table`, `get_data_slice`). With batches the refresh reads `dwv_batch_tmp`. A key from several sources is assigned to one batch.
+Without batches the refresh reads `dwa_keys_tmp`. The table holds only the current run; target and slice are session state (`get_target_table`, `get_data_slice`). With batches the refresh reads `dwa_batch_tmp`. A key from several sources is assigned to one batch.
 
 ## Tables
 
 Same names and column order on Oracle and PostgreSQL.
 
-`dwv_watermark` is permanent. One row per `(target_owner, target_table, data_slice, source_owner, source_table)`.
+`dwa_watermark` is permanent. One row per `(target_owner, target_table, data_slice, source_owner, source_table)`.
 
 | Column | Meaning |
 | --- | --- |
@@ -94,7 +94,7 @@ Same names and column order on Oracle and PostgreSQL.
 | `watermark` | Greatest source value fully applied |
 | `updated_at` | Time of the last `finalize` write |
 
-`dwv_keys_tmp` holds every key of the current run. Rows survive a commit and last until the session ends. Target owner, target and slice are session state, not columns.
+`dwa_keys_tmp` holds every key of the current run. Rows survive a commit and last until the session ends. Target owner, target and slice are session state, not columns.
 
 | Column | Meaning |
 | --- | --- |
@@ -103,14 +103,14 @@ Same names and column order on Oracle and PostgreSQL.
 | `watermark` | Source value of this key |
 | `batch_no`, `batch_done` | Set by `prepare_batches`. `batch_done` becomes `1` after `finish_batch` |
 
-`dwv_batch_tmp` holds `pk_1`, `pk_2`, `pk_3` of the open batch. A commit empties it.
+`dwa_batch_tmp` holds `pk_1`, `pk_2`, `pk_3` of the open batch. A commit empties it.
 
-`dwv_log` is permanent. Rows are appended only when `set_log_table` is on.
+`dwa_log` is permanent. Rows are appended only when `set_log_table` is on.
 
 | Column | Meaning |
 | --- | --- |
 | `logged_at` | Time of the step |
-| `proc_name` | `initialize`, `capture_delta`, ... (Oracle prefixes `pkg_dwv.`) |
+| `proc_name` | `initialize`, `capture_delta`, ... (Oracle prefixes `pkg_dwa.`) |
 | `target_owner`, `target_table`, `data_slice`, `batch_no` | Session state at that step |
 | `log_rows` | Row count of the step |
 | `message` | Same text as the notice / `dbms_output` line |
@@ -120,13 +120,13 @@ Same names and column order on Oracle and PostgreSQL.
 Use a named `p_data_slice` when the same target is loaded in independent slices. Each slice has its own watermark. Pass the same predicate in capture and refresh SQL:
 
 ```sql
-pkg_dwv.initialize('customer_metrics', 'fr', 2);
+pkg_dwa.initialize('customer_metrics', 'fr', 2);
 
-pkg_dwv.capture_delta('orders', q'[
+pkg_dwa.capture_delta('orders', q'[
     select customer_id as pk_1,
            max(updated_at) as watermark
     from orders
-    where country_code = pkg_dwv.get_data_slice
+    where country_code = pkg_dwa.get_data_slice
       and updated_at > :since
     group by customer_id
 ]');
@@ -135,21 +135,21 @@ pkg_dwv.capture_delta('orders', q'[
 On PostgreSQL the same calls are `initialize` and `get_data_slice()`. Cross-schema sources pass `p_owner`:
 
 ```sql
-pkg_dwv.initialize('customer_metrics', p_owner => 'analytics');
-pkg_dwv.capture_delta('orders', p_sql => '...', p_owner => 'sales');
+pkg_dwa.initialize('customer_metrics', p_owner => 'analytics');
+pkg_dwa.capture_delta('orders', p_sql => '...', p_owner => 'sales');
 ```
 
 ## Hard deletes
 
-Not supported. A physical `DELETE` never reaches `dwv_keys_tmp`. To drop a target row, keep a source row whose watermark still moves (flag, tombstone, audit) and delete it in the refresh SQL.
+Not supported. A physical `DELETE` never reaches `dwa_keys_tmp`. To drop a target row, keep a source row whose watermark still moves (flag, tombstone, audit) and delete it in the refresh SQL.
 
 ## Tests
 
 ```bash
 docker compose -f tests/docker/docker-compose.yml up --wait
-ORACLE_CONTAINER=dwv-oracle \
+ORACLE_CONTAINER=dwa-oracle \
 ORACLE_CONNECT=test/test_pass@//localhost:1521/FREEPDB1 \
-PG_CONTAINER=dwv-postgres \
+PG_CONTAINER=dwa-postgres \
 make test
 ```
 

@@ -11,9 +11,13 @@ declare
             end if;
     end;
 begin
-    drop_tbl('dwv_batch_tmp');
-    drop_tbl('dwv_keys_tmp');
-    drop_tbl('dwv_log');
-    drop_tbl('dwv_watermark');
+    drop_tbl('dwa_batch_tmp');
+    drop_tbl('dwa_keys_tmp');
+    drop_tbl('dwa_log');
+    drop_tbl('dwa_watermark');
+    drop_tbl('dwa_batch_tmp');
+    drop_tbl('dwa_keys_tmp');
+    drop_tbl('dwa_log');
+    drop_tbl('dwa_watermark');
 end;
 /

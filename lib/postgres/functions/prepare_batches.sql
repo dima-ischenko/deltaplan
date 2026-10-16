@@ -1,16 +1,16 @@
--- Batches are optional. Without them the refresh statement reads dwv_keys_tmp.
--- With them: prepare_batches, then next_batch / SQL on dwv_batch_tmp / finish_batch.
+-- Batches are optional. Without them the refresh statement reads dwa_keys_tmp.
+-- With them: prepare_batches, then next_batch / SQL on dwa_batch_tmp / finish_batch.
 -- This function does not commit. Commit after each finish_batch to keep that
 -- batch in the target, and after finalize to store the watermark. A failed
 -- task repeats initialize, capture, and the batch loop. next_batch, the
--- refresh statement, and finish_batch stay in one transaction: dwv_batch_tmp
+-- refresh statement, and finish_batch stay in one transaction: dwa_batch_tmp
 -- is ON COMMIT DELETE ROWS.
 create or replace function prepare_batches(
     p_batch_size  numeric default 5000
 )
 returns void
 language plpgsql
-set search_path = pg_temp, :"dwv_schema", public as $$
+set search_path = pg_temp, :"dwa_schema", public as $$
 declare
 l_target    text;
 l_size      numeric;
@@ -22,37 +22,37 @@ l_batch_no  numeric;
 begin
   select target_table, batch_size, batch_no
   into l_target, l_size, l_batch_no
-  from dwv_session_tmp
+  from dwa_session_tmp
   where id = 1;
 
   if l_target is null then
-    raise exception 'DWV-20001 Call initialize first';
+    raise exception 'DWA-20001 Call initialize first';
   end if;
   if p_batch_size is null or p_batch_size < 1 or p_batch_size <> trunc(p_batch_size) then
-    raise exception 'DWV-20003 batch_size must be a positive integer';
+    raise exception 'DWA-20003 batch_size must be a positive integer';
   end if;
 
   select exists (
     select 1
-    from dwv_keys_tmp
+    from dwa_keys_tmp
     where batch_no is not null
   ) into l_assigned;
 
   if l_assigned and l_size is not null and p_batch_size <> l_size then
-    raise exception 'DWV-20009 batch_size cannot change while batches are in progress, current=%', l_size;
+    raise exception 'DWA-20009 batch_size cannot change while batches are in progress, current=%', l_size;
   end if;
 
   if l_batch_no is not null then
-    select exists (select 1 from dwv_batch_tmp) into l_open_rows;
+    select exists (select 1 from dwa_batch_tmp) into l_open_rows;
     if l_open_rows then
-      raise exception 'DWV-20014 batch % is open; call finish_batch', l_batch_no;
+      raise exception 'DWA-20014 batch % is open; call finish_batch', l_batch_no;
     end if;
-    raise exception 'DWV-20019 batch % lost its keys; call initialize', l_batch_no;
+    raise exception 'DWA-20019 batch % lost its keys; call initialize', l_batch_no;
   end if;
 
-  select exists (select 1 from dwv_keys_tmp) into l_has_keys;
+  select exists (select 1 from dwa_keys_tmp) into l_has_keys;
 
-  update dwv_session_tmp
+  update dwa_session_tmp
   set batches_ready = true,
     batch_no = null,
     batch_size = case when l_has_keys then p_batch_size else batch_size end
@@ -64,7 +64,7 @@ begin
   end if;
 
   if not l_assigned then
-    update dwv_keys_tmp t
+    update dwa_keys_tmp t
     set batch_no = s.batch_no,
       batch_done = 0
     from (
@@ -74,7 +74,7 @@ begin
          )::numeric / p_batch_size) as batch_no
       from (
         select distinct pk_1, pk_2, pk_3
-        from dwv_keys_tmp
+        from dwa_keys_tmp
       ) d
     ) s
     where t.pk_1 = s.pk_1
@@ -84,7 +84,7 @@ begin
 
     get diagnostics l_updated = row_count;
     if l_updated = 0 then
-      raise exception 'DWV-20011 batch numbers were not assigned';
+      raise exception 'DWA-20011 batch numbers were not assigned';
     end if;
 
     perform _log(

@@ -1,1 +1,1 @@
-call dwv_test.seed_customer_delta();
+call dwa_test.seed_customer_delta();

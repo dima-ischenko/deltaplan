@@ -1,23 +1,23 @@
 # Oracle
 
-Call `pkg_dwv` after you [deploy](deploy.md) it into the calculating user's schema. Methods and parameters: [root README](../../README.md).
+Call `pkg_dwa` after you [deploy](deploy.md) it into the calculating user's schema. Methods and parameters: [root README](../../README.md).
 
-Without batches, one refresh reads `dwv_keys_tmp`. The table holds only the current run. With batches, each refresh reads `dwv_batch_tmp`.
+Without batches, one refresh reads `dwa_keys_tmp`. The table holds only the current run. With batches, each refresh reads `dwa_batch_tmp`.
 
 ```sql
 declare
     l_change_date date := sysdate;
 begin
-    pkg_dwv.initialize('customer_metrics', 'all');
+    pkg_dwa.initialize('customer_metrics', 'all');
 
-    pkg_dwv.capture_delta('customers', q'[
+    pkg_dwa.capture_delta('customers', q'[
         select id as pk_1,
                updated_at as watermark
         from customers
         where updated_at > :since
     ]');
 
-    pkg_dwv.capture_delta('orders', q'[
+    pkg_dwa.capture_delta('orders', q'[
         select customer_id as pk_1,
                max(updated_at) as watermark
         from orders
@@ -25,7 +25,7 @@ begin
         group by customer_id
     ]');
 
-    pkg_dwv.capture_delta('order_items', q'[
+    pkg_dwa.capture_delta('order_items', q'[
         with changed_items as (
             select order_id, updated_at
             from order_items
@@ -38,14 +38,14 @@ begin
         group by o.customer_id
     ]');
 
-    pkg_dwv.prepare_batches(5000);
+    pkg_dwa.prepare_batches(5000);
 
-    while pkg_dwv.next_batch loop
+    while pkg_dwa.next_batch loop
         merge into customer_metrics t
             using (
                 with changed as (
                     select pk_1 as customer_id
-                    from dwv_batch_tmp
+                    from dwa_batch_tmp
                     group by pk_1
                 ),
                 order_amount as (
@@ -90,10 +90,10 @@ begin
                 s.last_order_id, s.cnt_completed, l_change_date
             );
 
-        pkg_dwv.finish_batch;
+        pkg_dwa.finish_batch;
     end loop;
 
-    pkg_dwv.finalize;
+    pkg_dwa.finalize;
     commit;
 end;
 ```

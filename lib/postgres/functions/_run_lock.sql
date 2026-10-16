@@ -2,15 +2,15 @@
 -- Released in finalize, or when the session ends. Same-session initialize keeps it.
 --
 -- PostgreSQL has no named advisory locks. The name is the same string Oracle
--- passes to DBMS_LOCK.ALLOCATE_UNIQUE: 'DWV|' || owner || '.' || target || '|' || slice.
--- 4480854 is 0x00445756 ('DWV'); objid is hashtext of that name.
+-- passes to DBMS_LOCK.ALLOCATE_UNIQUE: 'DWA|' || owner || '.' || target || '|' || slice.
+-- 4478785 is 0x00445741 ('DWA'); objid is hashtext of that name.
 create or replace function _acquire_run_lock(p_owner text, p_target text, p_slice text)
 returns void
 language plpgsql
-set search_path = pg_catalog, :"dwv_schema" as $$
+set search_path = pg_catalog, :"dwa_schema" as $$
 declare
-c_ns   constant integer := 4480854;
-l_name text := 'DWV|' || p_owner || '.' || p_target || '|' || p_slice;
+c_ns   constant integer := 4478785;
+l_name text := 'DWA|' || p_owner || '.' || p_target || '|' || p_slice;
 l_id   integer := hashtext(l_name);
 l_old  integer;
 begin
@@ -45,7 +45,7 @@ begin
   if not pg_try_advisory_lock(c_ns, l_id) then
     perform _log('initialize', 0, 'lock busy name=' || l_name);
     raise exception
-      'DWV-20021 another run is active for %.% / %',
+      'DWA-20021 another run is active for %.% / %',
       p_owner, p_target, p_slice;
   end if;
 
@@ -56,10 +56,10 @@ $$;
 create or replace function _release_run_lock(p_owner text, p_target text, p_slice text)
 returns void
 language plpgsql
-set search_path = pg_catalog, :"dwv_schema" as $$
+set search_path = pg_catalog, :"dwa_schema" as $$
 declare
-c_ns   constant integer := 4480854;
-l_name text := 'DWV|' || p_owner || '.' || p_target || '|' || p_slice;
+c_ns   constant integer := 4478785;
+l_name text := 'DWA|' || p_owner || '.' || p_target || '|' || p_slice;
 begin
   if pg_advisory_unlock(c_ns, hashtext(l_name)) then
     perform _log('finalize', 0, 'lock released name=' || l_name);
