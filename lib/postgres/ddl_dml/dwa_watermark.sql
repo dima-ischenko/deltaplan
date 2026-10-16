@@ -15,21 +15,6 @@ begin
         l_distributed := ' distributed by (target_table)';
     end if;
 
-    if to_regclass('dwa_watermark') is not null
-       and to_regclass('dwa_watermark') is null then
-        execute 'alter table dwa_watermark rename to dwa_watermark';
-    end if;
-
-    if to_regclass('dwa_watermark') is not null
-       and exists (
-            select 1
-            from pg_constraint
-            where conrelid = 'dwa_watermark'::regclass
-              and conname = 'pk_dwa_watermark'
-       ) then
-        execute 'alter table dwa_watermark rename constraint pk_dwa_watermark to pk_dwa_watermark';
-    end if;
-
     if to_regclass('dwa_watermark') is null then
         execute
             'create table dwa_watermark (

@@ -10,8 +10,6 @@ set verify off
 
 begin execute immediate 'drop package pkg_dwa_test'; exception when others then if sqlcode != -4043 then raise; end if; end;
 /
-begin execute immediate 'drop package pkg_dwa_test'; exception when others then if sqlcode != -4043 then raise; end if; end;
-/
 
 @tests/oracle/helpers/tables.sql
 @tests/oracle/helpers/pkg_dwa_test.sql

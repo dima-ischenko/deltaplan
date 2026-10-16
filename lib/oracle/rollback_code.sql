@@ -12,6 +12,5 @@ declare
     end;
 begin
     drop_pkg('pkg_dwa');
-    drop_pkg('pkg_dwa');
 end;
 /

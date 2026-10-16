@@ -5,10 +5,8 @@
 \set ON_ERROR_STOP on
 \set dwa_schema lib
 drop schema if exists dwa_test cascade;
-drop schema if exists dwa_test cascade;
 drop schema if exists lib cascade;
 create schema lib;
-\i lib/postgres/rollback.sql
 \i lib/postgres/deploy.sql
 set search_path to lib, public;
 

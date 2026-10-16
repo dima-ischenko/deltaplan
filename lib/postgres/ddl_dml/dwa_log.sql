@@ -6,11 +6,6 @@ declare
     l_has_slice        boolean;
     l_has_target_owner boolean;
 begin
-    if to_regclass('dwa_log') is not null
-       and to_regclass('dwa_log') is null then
-        execute 'alter table dwa_log rename to dwa_log';
-    end if;
-
     if to_regclass('dwa_log') is null then
         if position('greenplum' in lower(version())) > 0 then
             l_distributed := ' distributed randomly';
