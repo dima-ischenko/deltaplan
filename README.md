@@ -34,11 +34,11 @@ Inserts changed keys into `dwa_keys_tmp`. The source must exist and be selectabl
 | Parameter | Required | Default | Effect |
 | --- | --- | --- | --- |
 | `p_source_table` | yes | — | Unqualified source name stored with the watermark. |
-| `p_sql` | yes | — | Must return `pk_1` and `watermark`. `pk_2` and `pk_3` are optional. Must contain `:since` exactly once. Keep the predicate `value > :since`. |
+| `p_sql` | yes | — | Must return `pk_1` and `watermark`. `pk_2` and `pk_3` are optional. Must contain `:since` at least once. Repeat it for a truncated-day predicate next to `value > :since`. `:data_slice` is optional and becomes `get_data_slice`, not a bind. |
 | `p_lookback_hours` | no | `null` | Lookback for this source. `null` uses the value from `initialize`. |
 | `p_owner` | no | current schema | Schema of the source. Same default as `initialize`. |
 
-`:since` is the stored watermark minus the lookback. With no stored row the bound is `2000-01-01`.
+`:since` is the stored watermark minus the lookback. With no stored row the bound is `2000-01-01`. The same bind can appear more than once. `:data_slice` is rewritten to `get_data_slice()` / `pkg_dwa.get_data_slice`; you can also call that getter yourself. Slice is optional: the default `'all'` needs no filter.
 
 ### prepare_batches(p_batch_size [, p_commit_batch])
 
@@ -117,7 +117,7 @@ Same names and column order on Oracle and PostgreSQL.
 
 ## Data slices
 
-Use a named `p_data_slice` when the same target is loaded in independent slices. Each slice has its own watermark. Pass the same predicate in capture and refresh SQL:
+Use a named `p_data_slice` when the same target is loaded in independent slices. Each slice has its own watermark. Pass the same predicate in capture and refresh SQL. `country_code = :data_slice` is the same as the getter: the placeholder is rewritten, not bound.
 
 ```sql
 pkg_dwa.initialize('customer_metrics', 'fr', 2);
@@ -127,6 +127,7 @@ pkg_dwa.capture_delta('orders', q'[
            max(updated_at) as watermark
     from orders
     where country_code = pkg_dwa.get_data_slice
+      and trunc(updated_at) >= trunc(:since)
       and updated_at > :since
     group by customer_id
 ]');

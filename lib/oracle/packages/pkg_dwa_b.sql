@@ -232,23 +232,98 @@ begin
     return l_cnt;
 end placeholder_count;
 
--- True when (p_sql) exposes p_col. Inner SQL errors other than a missing
--- p_col are re-raised. where 1 = 0 keeps this a parse of the shape only.
-function capture_has_col(
-    p_sql   varchar2,
-    p_bound date,
-    p_col   varchar2
-) return boolean is
-    l_n number;
+-- Word-boundary replace, same identifier rule as placeholder_count.
+function replace_placeholder(
+    p_sql  varchar2,
+    p_name varchar2,
+    p_with varchar2
+) return varchar2 is
+    l_src   varchar2(32767) := p_sql;
+    l_lower varchar2(32767) := lower(p_sql);
+    l_name  varchar2(128) := lower(p_name);
+    l_pos   number := 1;
+    l_next  varchar2(1);
+    l_out   varchar2(32767);
+    l_last  number := 1;
 begin
-    execute immediate
-        'select count(*) from (select s.' || p_col
-        || ' from (' || p_sql || ') s where 1 = 0)'
-        into l_n
-        using p_bound;
+    loop
+        l_pos := instr(l_lower, l_name, l_pos);
+        exit when l_pos = 0;
+
+        l_next := substr(l_lower, l_pos + length(l_name), 1);
+        if l_next is null or regexp_instr(l_next, '[a-z0-9_$#]') = 0 then
+            l_out := l_out || substr(l_src, l_last, l_pos - l_last) || p_with;
+            l_last := l_pos + length(l_name);
+        end if;
+
+        l_pos := l_pos + length(l_name);
+    end loop;
+
+    return l_out || substr(l_src, l_last);
+end replace_placeholder;
+
+-- Named :since can appear more than once. Extra binds that the statement
+-- does not mention are allowed.
+function exec_dml_named(
+    p_sql          clob,
+    p_since        date,
+    p_source_owner varchar2,
+    p_source_table varchar2
+) return number is
+    l_cursor integer;
+    l_rows   integer;
+begin
+    l_cursor := dbms_sql.open_cursor;
+    dbms_sql.parse(l_cursor, p_sql, dbms_sql.native);
+    dbms_sql.bind_variable(l_cursor, 'since', p_since);
+    dbms_sql.bind_variable(l_cursor, 'source_owner', p_source_owner);
+    dbms_sql.bind_variable(l_cursor, 'source_table', p_source_table);
+    l_rows := dbms_sql.execute(l_cursor);
+    dbms_sql.close_cursor(l_cursor);
+    return l_rows;
+exception
+    when others then
+        if l_cursor is not null then
+            begin
+                if dbms_sql.is_open(l_cursor) then
+                    dbms_sql.close_cursor(l_cursor);
+                end if;
+            exception
+                when others then
+                    null;
+            end;
+        end if;
+        raise;
+end exec_dml_named;
+
+-- True when (p_sql) exposes p_col. Parse is enough: missing columns raise
+-- ORA-00904, and :since does not have to be bound. Other errors are re-raised.
+function capture_has_col(
+    p_sql varchar2,
+    p_col varchar2
+) return boolean is
+    l_cursor integer;
+begin
+    l_cursor := dbms_sql.open_cursor;
+    dbms_sql.parse(
+        l_cursor,
+        'select s.' || p_col || ' from (' || p_sql || ') s where 1 = 0',
+        dbms_sql.native
+    );
+    dbms_sql.close_cursor(l_cursor);
     return true;
 exception
     when others then
+        if l_cursor is not null then
+            begin
+                if dbms_sql.is_open(l_cursor) then
+                    dbms_sql.close_cursor(l_cursor);
+                end if;
+            exception
+                when others then
+                    null;
+            end;
+        end if;
         if sqlcode = -904
            and instr(upper(sqlerrm), '"' || upper(p_col) || '"') > 0 then
             return false;
@@ -549,6 +624,7 @@ procedure capture_delta(
     l_lookback     number;
     l_watermark    date;
     l_bound        date;
+    l_sql          varchar2(32767);
     l_insert_sql   clob;
     l_pk2          varchar2(64);
     l_pk3          varchar2(64);
@@ -567,8 +643,11 @@ begin
         raise_application_error(-20006, 'capture sql is required');
     end if;
 
-    if placeholder_count(p_sql, ':since') != 1 then
-        raise_application_error(-20015, 'capture SQL must contain :since exactly once');
+    -- Slice is session state. Keep it off the bind list so :since can repeat.
+    l_sql := replace_placeholder(p_sql, ':data_slice', 'pkg_dwa.get_data_slice');
+
+    if placeholder_count(l_sql, ':since') < 1 then
+        raise_application_error(-20015, 'capture SQL must contain :since at least once');
     end if;
 
     assert_relation(l_source_owner, l_source_table);
@@ -591,8 +670,8 @@ begin
     -- Date arithmetic keeps the bound as DATE. Hours are a fraction of a day.
     l_bound := l_watermark - l_lookback / 24;
 
-    if not capture_has_col(p_sql, l_bound, 'pk_1')
-       or not capture_has_col(p_sql, l_bound, 'watermark') then
+    if not capture_has_col(l_sql, 'pk_1')
+       or not capture_has_col(l_sql, 'watermark') then
         raise_application_error(
             -20020,
             'capture SQL must return pk_1 and watermark; pk_2 and pk_3 are optional'
@@ -600,38 +679,36 @@ begin
     end if;
 
     l_pk2 := case
-                 when capture_has_col(p_sql, l_bound, 'pk_2') then 's.pk_2'
+                 when capture_has_col(l_sql, 'pk_2') then 's.pk_2'
                  else 'cast(null as varchar2(255))'
              end;
     l_pk3 := case
-                 when capture_has_col(p_sql, l_bound, 'pk_3') then 's.pk_3'
+                 when capture_has_col(l_sql, 'pk_3') then 's.pk_3'
                  else 'cast(null as varchar2(255))'
              end;
 
     begin
     l_insert_sql := '
-        begin
-            insert into dwa_keys_tmp (
-                source_owner,
-                source_table,
-                pk_1,
-                pk_2,
-                pk_3,
-                watermark
-            )
-            select
-                :source_owner,
-                :source_table,
-                s.pk_1,
-                ' || l_pk2 || ',
-                ' || l_pk3 || ',
-                s.watermark
-            from (' || p_sql || ') s;
-            :cnt_out := sql%rowcount;
-        end;';
+        insert into dwa_keys_tmp (
+            source_owner,
+            source_table,
+            pk_1,
+            pk_2,
+            pk_3,
+            watermark
+        )
+        select
+            :source_owner,
+            :source_table,
+            s.pk_1,
+            ' || l_pk2 || ',
+            ' || l_pk3 || ',
+            s.watermark
+        from (' || l_sql || ') s';
 
-    execute immediate l_insert_sql
-        using in l_source_owner, in l_source_table, in l_bound, out l_rows;
+    l_rows := exec_dml_named(
+        l_insert_sql, l_bound, l_source_owner, l_source_table
+    );
 
     if gv_debug then
         select nvl(sum(cnt), 0),

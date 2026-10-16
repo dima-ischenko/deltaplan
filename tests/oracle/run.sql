@@ -40,6 +40,7 @@ end;
 
 @tests/oracle/cases/static_without_batches.sql
 @tests/oracle/cases/lookback_window.sql
+@tests/oracle/cases/capture_placeholders.sql
 @tests/oracle/cases/static_batches.sql
 @tests/oracle/cases/same_result.sql
 @tests/oracle/cases/rerun_after_failed_batch.sql

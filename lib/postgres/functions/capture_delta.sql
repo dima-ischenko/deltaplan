@@ -1,6 +1,8 @@
 -- p_lookback_hours null takes the value given to initialize.
--- p_sql must contain :since exactly once.
--- The placeholder is already the watermark minus the lookback offset.
+-- p_sql must contain :since at least once. Repeat the same placeholder when a
+-- truncated-day predicate should sit beside the exact watermark filter.
+-- :data_slice is optional and becomes get_data_slice(), not a bind.
+-- The :since placeholder is already the watermark minus the lookback offset.
 -- The statement must return pk_1 and watermark. pk_2 and pk_3 are optional.
 -- p_owner defaults to the current schema. The source must exist and be selectable.
 create or replace function capture_delta(
@@ -53,13 +55,16 @@ begin
     raise exception 'DWA-20006 capture sql is required';
   end if;
 
+  -- Slice is session state. Keep it off the bind list so :since can repeat.
+  l_sql := regexp_replace(p_sql, ':data_slice\M', 'get_data_slice()', 'gi');
+
   -- \M is the end of a word, so :since2 does not count.
   select count(*)
   into l_count
-  from regexp_matches(lower(p_sql), ':since\M', 'g');
+  from regexp_matches(lower(l_sql), ':since\M', 'g');
 
-  if l_count <> 1 then
-    raise exception 'DWA-20015 capture SQL must contain :since exactly once';
+  if l_count < 1 then
+    raise exception 'DWA-20015 capture SQL must contain :since at least once';
   end if;
 
   l_lookback := coalesce(p_lookback_hours, l_lookback, 0);
@@ -87,7 +92,7 @@ begin
   l_stored := coalesce(l_stored, timestamp '2000-01-01');
   l_bound := l_stored - (l_lookback * interval '1 hour');
 
-  l_sql := regexp_replace(p_sql, ':since\M', '$1', 'gi');
+  l_sql := regexp_replace(l_sql, ':since\M', '$1', 'gi');
 
   begin
     execute 'select s.pk_1 from (' || l_sql || ') s where false' using l_bound;

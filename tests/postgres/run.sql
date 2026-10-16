@@ -18,6 +18,7 @@ where target_table in ('inc_test_tgt', 'other_tgt');
 
 \i tests/postgres/cases/static_without_batches.sql
 \i tests/postgres/cases/lookback_window.sql
+\i tests/postgres/cases/capture_placeholders.sql
 \i tests/postgres/cases/static_batches.sql
 \i tests/postgres/cases/same_result.sql
 \i tests/postgres/cases/rerun_after_failed_batch.sql

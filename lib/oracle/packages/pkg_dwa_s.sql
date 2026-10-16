@@ -2,6 +2,7 @@ create or replace package pkg_dwa is
 
   -- p_lookback_hours moves the read bound back by N hours; fractions are allowed.
   -- The source SQL keeps a strict predicate: value > :since.
+  -- Repeat :since when a truncated-day predicate should use the same bound.
   -- Zero leaves the bound equal to the stored watermark.
   -- dwa_watermark receives the watermark itself; the lookback offset is not stored.
   -- Exclusive named DBMS_LOCK on (owner, target, slice). Another session gets -20021.
@@ -28,8 +29,10 @@ create or replace package pkg_dwa is
   procedure set_log_table(p_enabled boolean default true);
 
   -- A null p_lookback_hours takes the value given to initialize.
-  -- p_sql must contain :since exactly once.
-  -- The placeholder is already the watermark minus the lookback offset.
+  -- p_sql must contain :since at least once. Repeat the same bind when a
+  -- truncated-day predicate should sit beside the exact watermark filter.
+  -- :data_slice is optional and becomes get_data_slice, not a bind.
+  -- The :since placeholder is already the watermark minus the lookback offset.
   -- The statement must return pk_1 and watermark. pk_2 and pk_3 are optional.
   -- p_owner defaults to the current schema. The source must exist and be
   -- selectable. Watermarks are stored per (source owner, source table).
