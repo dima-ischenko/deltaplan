@@ -1,7 +1,7 @@
 -- p_lookback_hours null takes the value given to initialize.
 -- p_sql must contain :since at least once. Repeat the same placeholder when a
 -- truncated-day predicate should sit beside the exact watermark filter.
--- :data_slice is optional and becomes get_data_slice(), not a bind.
+-- :data_slice is optional; it is the slice given to initialize.
 -- The :since placeholder is already the watermark minus the lookback offset.
 -- The statement must return pk_1 and watermark. pk_2 and pk_3 are optional.
 -- p_owner defaults to the current schema. The source must exist and be selectable.
@@ -55,13 +55,10 @@ begin
     raise exception 'DWA-20006 capture sql is required';
   end if;
 
-  -- Slice is session state. Keep it off the bind list so :since can repeat.
-  l_sql := regexp_replace(p_sql, ':data_slice\M', 'get_data_slice()', 'gi');
-
   -- \M is the end of a word, so :since2 does not count.
   select count(*)
   into l_count
-  from regexp_matches(lower(l_sql), ':since\M', 'g');
+  from regexp_matches(lower(p_sql), ':since\M', 'g');
 
   if l_count < 1 then
     raise exception 'DWA-20015 capture SQL must contain :since at least once';
@@ -92,10 +89,11 @@ begin
   l_stored := coalesce(l_stored, timestamp '2000-01-01');
   l_bound := l_stored - (l_lookback * interval '1 hour');
 
-  l_sql := regexp_replace(l_sql, ':since\M', '$1', 'gi');
+  l_sql := regexp_replace(p_sql, ':since\M', '$1', 'gi');
+  l_sql := regexp_replace(l_sql, ':data_slice\M', '$2', 'gi');
 
   begin
-    execute 'select s.pk_1 from (' || l_sql || ') s where false' using l_bound;
+    execute 'select s.pk_1 from (' || l_sql || ') s where false' using l_bound, l_slice;
   exception
     when undefined_column then
       if position('pk_1' in lower(sqlerrm)) > 0 then
@@ -105,7 +103,7 @@ begin
 end;
 
   begin
-    execute 'select s.watermark from (' || l_sql || ') s where false' using l_bound;
+    execute 'select s.watermark from (' || l_sql || ') s where false' using l_bound, l_slice;
   exception
     when undefined_column then
       if position('watermark' in lower(sqlerrm)) > 0 then
@@ -116,7 +114,7 @@ end;
 
   l_pk2 := 'null::text';
   begin
-    execute 'select s.pk_2 from (' || l_sql || ') s where false' using l_bound;
+    execute 'select s.pk_2 from (' || l_sql || ') s where false' using l_bound, l_slice;
     l_pk2 := 's.pk_2';
   exception
     when undefined_column then
@@ -127,7 +125,7 @@ end;
 
   l_pk3 := 'null::text';
   begin
-    execute 'select s.pk_3 from (' || l_sql || ') s where false' using l_bound;
+    execute 'select s.pk_3 from (' || l_sql || ') s where false' using l_bound, l_slice;
     l_pk3 := 's.pk_3';
   exception
     when undefined_column then
@@ -140,9 +138,9 @@ end;
     'insert into dwa_keys_tmp (
       source_owner, source_table, pk_1, pk_2, pk_3, watermark
     )
-    select $2, $3, s.pk_1, ' || l_pk2 || ', ' || l_pk3 || ', s.watermark
+    select $3, $4, s.pk_1, ' || l_pk2 || ', ' || l_pk3 || ', s.watermark
     from (' || l_sql || ') s'
-    using l_bound, l_source_owner, l_source;
+    using l_bound, l_slice, l_source_owner, l_source;
 
   get diagnostics l_rows = row_count;
 

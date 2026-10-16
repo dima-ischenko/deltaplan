@@ -48,31 +48,13 @@ begin
         $sql$
             select id as pk_1, updated_at as watermark
             from inc_test_a
-            where id = get_data_slice()
-              and updated_at > :since
-        $sql$
-    );
-    call dwa_test.eq('slice getter keys', dwa_test.key_count(), '1');
-    select pk_1 into l_id from dwa_keys_tmp;
-    call dwa_test.eq('slice getter id', l_id, 'a');
-    perform finalize();
-
-    call dwa_test.reset();
-    call dwa_test.add_row('inc_test_a', 'a', 1, c_t1);
-    call dwa_test.add_row('inc_test_a', 'b', 1, c_t1);
-    perform initialize('inc_test_tgt', 'a', 0);
-    perform capture_delta(
-        'inc_test_a',
-        $sql$
-            select id as pk_1, updated_at as watermark
-            from inc_test_a
             where id = :data_slice
               and updated_at > :since
         $sql$
     );
-    call dwa_test.eq('slice placeholder keys', dwa_test.key_count(), '1');
+    call dwa_test.eq('slice bind keys', dwa_test.key_count(), '1');
     select pk_1 into l_id from dwa_keys_tmp;
-    call dwa_test.eq('slice placeholder id', l_id, 'a');
+    call dwa_test.eq('slice bind id', l_id, 'a');
     perform finalize();
 
     call dwa_test.pass('capture_placeholders');

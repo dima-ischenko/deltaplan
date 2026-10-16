@@ -5,7 +5,6 @@
 \i lib/postgres/functions/_log.sql
 \i lib/postgres/functions/get_target_table.sql
 \i lib/postgres/functions/get_target_owner.sql
-\i lib/postgres/functions/get_data_slice.sql
 \i lib/postgres/functions/get_batch_no.sql
 \i lib/postgres/functions/set_log_table.sql
 \i lib/postgres/functions/_unfinished.sql

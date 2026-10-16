@@ -34,11 +34,11 @@ Inserts changed keys into `dwa_keys_tmp`. The source must exist and be selectabl
 | Parameter | Required | Default | Effect |
 | --- | --- | --- | --- |
 | `p_source_table` | yes | — | Unqualified source name stored with the watermark. |
-| `p_sql` | yes | — | Must return `pk_1` and `watermark`. `pk_2` and `pk_3` are optional. Must contain `:since` at least once. Repeat it for a truncated-day predicate next to `value > :since`. `:data_slice` is optional and becomes `get_data_slice`, not a bind. |
+| `p_sql` | yes | — | Must return `pk_1` and `watermark`. `pk_2` and `pk_3` are optional. Must contain `:since` at least once. Repeat it for a truncated-day predicate next to `value > :since`. `:data_slice` is optional; it is the slice given to `initialize`. |
 | `p_lookback_hours` | no | `null` | Lookback for this source. `null` uses the value from `initialize`. |
 | `p_owner` | no | current schema | Schema of the source. Same default as `initialize`. |
 
-`:since` is the stored watermark minus the lookback. With no stored row the bound is `2000-01-01`. The same bind can appear more than once. `:data_slice` is rewritten to `get_data_slice()` / `pkg_dwa.get_data_slice`; you can also call that getter yourself. Slice is optional: the default `'all'` needs no filter.
+`:since` is the stored watermark minus the lookback. With no stored row the bound is `2000-01-01`. `:data_slice` is the slice given to `initialize`. Slice is optional: the default `'all'` needs no filter.
 
 ### prepare_batches(p_batch_size [, p_commit_batch])
 
@@ -75,12 +75,11 @@ No parameters. Return `null` when no run is open.
 | --- | --- |
 | `get_target_owner()` | Schema of the current target. |
 | `get_target_table()` | Target of the current run. Use it in capture and refresh SQL. |
-| `get_data_slice()` | Slice of the current run. Use it in capture and refresh SQL. |
 | `get_batch_no()` | Open batch number, or `null`. |
 
 `set_log_table([true])` / `set_log_table(false)` writes each step to `dwa_log`. Off by default. `dbms_output` / notices still print. On Oracle the insert is an autonomous transaction, so a rollback of the run keeps the log. PostgreSQL and Greenplum have no analog: the row lives in the caller's transaction.
 
-Without batches the refresh reads `dwa_keys_tmp`. The table holds only the current run; target and slice are session state (`get_target_table`, `get_data_slice`). With batches the refresh reads `dwa_batch_tmp`. A key from several sources is assigned to one batch.
+Without batches the refresh reads `dwa_keys_tmp`. The table holds only the current run; the target is session state (`get_target_table`). Slice is the value given to `initialize`. With batches the refresh reads `dwa_batch_tmp`. A key from several sources is assigned to one batch.
 
 ## Tables
 
@@ -117,7 +116,7 @@ Same names and column order on Oracle and PostgreSQL.
 
 ## Data slices
 
-Use a named `p_data_slice` when the same target is loaded in independent slices. Each slice has its own watermark. Pass the same predicate in capture and refresh SQL. `country_code = :data_slice` is the same as the getter: the placeholder is rewritten, not bound.
+Use a named `p_data_slice` when the same target is loaded in independent slices. Each slice has its own watermark. Filter capture SQL with `:data_slice`. In refresh SQL use the same literal you passed to `initialize`.
 
 ```sql
 pkg_dwa.initialize('customer_metrics', 'fr', 2);
@@ -126,14 +125,14 @@ pkg_dwa.capture_delta('orders', q'[
     select customer_id as pk_1,
            max(updated_at) as watermark
     from orders
-    where country_code = pkg_dwa.get_data_slice
+    where country_code = :data_slice
       and trunc(updated_at) >= trunc(:since)
       and updated_at > :since
     group by customer_id
 ]');
 ```
 
-On PostgreSQL the same calls are `initialize` and `get_data_slice()`. Cross-schema sources pass `p_owner`:
+On PostgreSQL the same call is `initialize`. Cross-schema sources pass `p_owner`:
 
 ```sql
 pkg_dwa.initialize('customer_metrics', p_owner => 'analytics');

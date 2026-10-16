@@ -1,5 +1,6 @@
 create or replace package body pkg_dwa is
 
+-- Session state. Touch these only from the getters and setters below.
 gv_target_owner    varchar2(128);
 gv_target_table    varchar2(128);
 gv_data_slice      varchar2(64);
@@ -34,6 +35,185 @@ c_lock_deadlock    constant number := 2;
 c_lock_param_error constant number := 3;
 c_lock_already_own constant number := 4;
 c_lock_illegal     constant number := 5;
+
+-- Session state is read and written only here.
+function get_target_owner return varchar2 is
+begin
+    return gv_target_owner;
+end get_target_owner;
+
+procedure set_target_owner(p_value varchar2) is
+begin
+    gv_target_owner := p_value;
+end set_target_owner;
+
+function get_target_table return varchar2 is
+begin
+    return gv_target_table;
+end get_target_table;
+
+procedure set_target_table(p_value varchar2) is
+begin
+    gv_target_table := p_value;
+end set_target_table;
+
+function get_data_slice return varchar2 is
+begin
+    return gv_data_slice;
+end get_data_slice;
+
+procedure set_data_slice(p_value varchar2) is
+begin
+    gv_data_slice := p_value;
+end set_data_slice;
+
+function get_lookback_hours return number is
+begin
+    return gv_lookback_hours;
+end get_lookback_hours;
+
+procedure set_lookback_hours(p_value number) is
+begin
+    gv_lookback_hours := p_value;
+end set_lookback_hours;
+
+function get_batch_no return number is
+begin
+    return gv_batch_no;
+end get_batch_no;
+
+procedure set_batch_no(p_value number) is
+begin
+    gv_batch_no := p_value;
+end set_batch_no;
+
+function get_batch_size return number is
+begin
+    return gv_batch_size;
+end get_batch_size;
+
+procedure set_batch_size(p_value number) is
+begin
+    gv_batch_size := p_value;
+end set_batch_size;
+
+function get_batch_total return number is
+begin
+    return gv_batch_total;
+end get_batch_total;
+
+procedure set_batch_total(p_value number) is
+begin
+    gv_batch_total := p_value;
+end set_batch_total;
+
+function get_commit_batch return boolean is
+begin
+    return gv_commit_batch;
+end get_commit_batch;
+
+procedure set_commit_batch(p_value boolean) is
+begin
+    if p_value then
+        gv_commit_batch := true;
+    else
+        gv_commit_batch := false;
+    end if;
+end set_commit_batch;
+
+function get_batches_ready return boolean is
+begin
+    return gv_batches_ready;
+end get_batches_ready;
+
+procedure set_batches_ready(p_value boolean) is
+begin
+    if p_value then
+        gv_batches_ready := true;
+    else
+        gv_batches_ready := false;
+    end if;
+end set_batches_ready;
+
+function get_output_ready return boolean is
+begin
+    return gv_output_ready;
+end get_output_ready;
+
+procedure set_output_ready(p_value boolean) is
+begin
+    if p_value then
+        gv_output_ready := true;
+    else
+        gv_output_ready := false;
+    end if;
+end set_output_ready;
+
+function get_debug return boolean is
+begin
+    return gv_debug;
+end get_debug;
+
+procedure set_debug(p_value boolean) is
+begin
+    if p_value then
+        gv_debug := true;
+    else
+        gv_debug := false;
+    end if;
+end set_debug;
+
+function get_log_table return boolean is
+begin
+    return gv_log_table;
+end get_log_table;
+
+procedure set_log_table(p_enabled boolean default true) is
+begin
+    if p_enabled then
+        gv_log_table := true;
+    else
+        gv_log_table := false;
+    end if;
+end set_log_table;
+
+function get_lockhandle return varchar2 is
+begin
+    return gv_lockhandle;
+end get_lockhandle;
+
+procedure set_lockhandle(p_value varchar2) is
+begin
+    gv_lockhandle := p_value;
+end set_lockhandle;
+
+function get_lockname return varchar2 is
+begin
+    return gv_lockname;
+end get_lockname;
+
+procedure set_lockname(p_value varchar2) is
+begin
+    gv_lockname := p_value;
+end set_lockname;
+
+procedure clear_batch_state is
+begin
+    set_batch_no(null);
+    set_batch_size(null);
+    set_batch_total(null);
+    set_commit_batch(true);
+    set_batches_ready(false);
+end clear_batch_state;
+
+procedure clear_run is
+begin
+    set_target_owner(null);
+    set_target_table(null);
+    set_data_slice(null);
+    set_lookback_hours(0);
+    clear_batch_state;
+end clear_run;
 
 function get_proc_name(p_proc_name varchar2) return varchar2 is
 begin
@@ -155,6 +335,10 @@ procedure write_log_row(
     p_text      varchar2
 ) is
     pragma autonomous_transaction;
+    l_owner  varchar2(128) := get_target_owner;
+    l_target varchar2(128) := get_target_table;
+    l_slice  varchar2(64) := get_data_slice;
+    l_batch  number := get_batch_no;
 begin
     insert into dwa_log (
         logged_at,
@@ -168,10 +352,10 @@ begin
     ) values (
         systimestamp,
         p_proc_name,
-        gv_target_owner,
-        gv_target_table,
-        gv_data_slice,
-        gv_batch_no,
+        l_owner,
+        l_target,
+        l_slice,
+        l_batch,
         p_rows,
         substr(p_text, 1, 4000)
     );
@@ -182,9 +366,9 @@ procedure i_log(p_proc_name varchar2,
                 p_rows      number,
                 p_text      varchar2 default null) is
 begin
-    if not gv_output_ready then
+    if not get_output_ready then
         dbms_output.enable(buffer_size => null);
-        gv_output_ready := true;
+        set_output_ready(true);
     end if;
 
     dbms_output.put_line(
@@ -194,7 +378,7 @@ begin
         || p_text
     );
 
-    if gv_log_table then
+    if get_log_table then
         write_log_row(
             p_proc_name,
             p_rows,
@@ -205,7 +389,7 @@ end i_log;
 
 procedure assert_ready is
 begin
-    if gv_target_table is null then
+    if get_target_table is null then
         raise_application_error(-20001, 'Call initialize first');
     end if;
 end assert_ready;
@@ -232,41 +416,13 @@ begin
     return l_cnt;
 end placeholder_count;
 
--- Word-boundary replace, same identifier rule as placeholder_count.
-function replace_placeholder(
-    p_sql  varchar2,
-    p_name varchar2,
-    p_with varchar2
-) return varchar2 is
-    l_src   varchar2(32767) := p_sql;
-    l_lower varchar2(32767) := lower(p_sql);
-    l_name  varchar2(128) := lower(p_name);
-    l_pos   number := 1;
-    l_next  varchar2(1);
-    l_out   varchar2(32767);
-    l_last  number := 1;
-begin
-    loop
-        l_pos := instr(l_lower, l_name, l_pos);
-        exit when l_pos = 0;
-
-        l_next := substr(l_lower, l_pos + length(l_name), 1);
-        if l_next is null or regexp_instr(l_next, '[a-z0-9_$#]') = 0 then
-            l_out := l_out || substr(l_src, l_last, l_pos - l_last) || p_with;
-            l_last := l_pos + length(l_name);
-        end if;
-
-        l_pos := l_pos + length(l_name);
-    end loop;
-
-    return l_out || substr(l_src, l_last);
-end replace_placeholder;
-
--- Named :since can appear more than once. Extra binds that the statement
--- does not mention are allowed.
+-- Named :since and :data_slice can appear more than once. Bind only names
+-- that the statement actually contains: an unused bind raises ORA-01006.
 function exec_dml_named(
     p_sql          clob,
     p_since        date,
+    p_data_slice   varchar2,
+    p_bind_slice   boolean,
     p_source_owner varchar2,
     p_source_table varchar2
 ) return number is
@@ -276,6 +432,9 @@ begin
     l_cursor := dbms_sql.open_cursor;
     dbms_sql.parse(l_cursor, p_sql, dbms_sql.native);
     dbms_sql.bind_variable(l_cursor, 'since', p_since);
+    if p_bind_slice then
+        dbms_sql.bind_variable(l_cursor, 'data_slice', p_data_slice);
+    end if;
     dbms_sql.bind_variable(l_cursor, 'source_owner', p_source_owner);
     dbms_sql.bind_variable(l_cursor, 'source_table', p_source_table);
     l_rows := dbms_sql.execute(l_cursor);
@@ -353,21 +512,18 @@ begin
     i_log(
         p_proc_name,
         nvl(p_rows, 0),
-        'failed batch=' || nvl(to_char(gv_batch_no), 'none') || ' ' || p_error
+        'failed batch=' || nvl(to_char(get_batch_no), 'none') || ' ' || p_error
     );
     rollback;
-    gv_batch_no := null;
-    gv_batch_size := null;
-    gv_batch_total := null;
-    gv_commit_batch := true;
-    gv_batches_ready := false;
+    clear_batch_state;
     i_log(p_proc_name, 0, 'rolled back, call initialize before the next run');
 end note_failure;
 
 procedure assert_no_open_batch is
-    l_open number := 0;
+    l_open     number := 0;
+    l_batch_no number := get_batch_no;
 begin
-    if gv_batch_no is null then
+    if l_batch_no is null then
         return;
     end if;
 
@@ -379,44 +535,15 @@ begin
     if l_open > 0 then
         raise_application_error(
             -20014,
-            'batch ' || gv_batch_no || ' is open; call finish_batch'
+            'batch ' || l_batch_no || ' is open; call finish_batch'
         );
     end if;
 
     raise_application_error(
         -20019,
-        'batch ' || gv_batch_no || ' lost its keys; call initialize'
+        'batch ' || l_batch_no || ' lost its keys; call initialize'
     );
 end assert_no_open_batch;
-
-function get_target_owner return varchar2 is
-begin
-    return gv_target_owner;
-end get_target_owner;
-
-function get_target_table return varchar2 is
-begin
-    return gv_target_table;
-end get_target_table;
-
-function get_data_slice return varchar2 is
-begin
-    return gv_data_slice;
-end get_data_slice;
-
-function get_batch_no return number is
-begin
-    return gv_batch_no;
-end get_batch_no;
-
-procedure set_log_table(p_enabled boolean default true) is
-begin
-    if p_enabled then
-        gv_log_table := true;
-    else
-        gv_log_table := false;
-    end if;
-end set_log_table;
 
 -- Named lock, same idea as lock_utl: ALLOCATE_UNIQUE(name) then REQUEST(handle).
 -- REQUEST has no name overload. ALLOCATE_UNIQUE writes DBMS_LOCK_ALLOCATED;
@@ -449,16 +576,16 @@ procedure acquire_run_lock(
     l_rc     number;
     l_proc   varchar2(64) := get_proc_name('initialize');
 begin
-    if gv_lockname = l_name and gv_lockhandle is not null then
+    if get_lockname = l_name and get_lockhandle is not null then
         i_log(l_proc, 0, 'lock already held name=' || l_name);
         return;
     end if;
 
-    if gv_lockhandle is not null then
-        l_rc := dbms_lock.release(gv_lockhandle);
-        i_log(l_proc, 0, 'lock released name=' || gv_lockname);
-        gv_lockhandle := null;
-        gv_lockname := null;
+    if get_lockhandle is not null then
+        l_rc := dbms_lock.release(get_lockhandle);
+        i_log(l_proc, 0, 'lock released name=' || get_lockname);
+        set_lockhandle(null);
+        set_lockname(null);
     end if;
 
     l_handle := allocate_lock_handle(l_name);
@@ -469,7 +596,13 @@ begin
         release_on_commit => false
     );
 
-    -- 0 success, 4 already own lock. 1 timeout means another session holds it.
+    -- dbms_lock.request:
+    -- 0 success
+    -- 1 timeout            -- another session holds it
+    -- 2 deadlock
+    -- 3 parameter error
+    -- 4 already own lock
+    -- 5 illegal lock handle
     if l_rc not in (c_lock_success, c_lock_already_own) then
         i_log(
             l_proc,
@@ -491,8 +624,8 @@ begin
         );
     end if;
 
-    gv_lockhandle := l_handle;
-    gv_lockname := l_name;
+    set_lockhandle(l_handle);
+    set_lockname(l_name);
     if l_rc = c_lock_already_own then
         i_log(l_proc, 0, 'lock already held name=' || l_name);
     else
@@ -501,21 +634,22 @@ begin
 end acquire_run_lock;
 
 procedure release_run_lock is
-    l_rc   number;
-    l_name varchar2(128) := gv_lockname;
+    l_rc     number;
+    l_name   varchar2(128) := get_lockname;
+    l_handle varchar2(128) := get_lockhandle;
 begin
-    if gv_lockhandle is null then
+    if l_handle is null then
         return;
     end if;
 
     begin
-        l_rc := dbms_lock.release(gv_lockhandle);
+        l_rc := dbms_lock.release(l_handle);
     exception
         when others then
             null;
     end;
-    gv_lockhandle := null;
-    gv_lockname := null;
+    set_lockhandle(null);
+    set_lockname(null);
     i_log(get_proc_name('finalize'), 0, 'lock released name=' || l_name);
 end release_run_lock;
 
@@ -524,15 +658,18 @@ function get_watermark(
     p_source_table varchar2
 ) return date is
     l_result date;
+    l_owner  varchar2(128) := get_target_owner;
+    l_target varchar2(128) := get_target_table;
+    l_slice  varchar2(64) := get_data_slice;
 begin
     select max(watermark)
     into l_result
     from dwa_watermark
-    where target_owner = gv_target_owner
-      and target_table = gv_target_table
+    where target_owner = l_owner
+      and target_table = l_target
       and source_owner = p_source_owner
       and source_table = p_source_table
-      and data_slice = gv_data_slice;
+      and data_slice = l_slice;
 
     return coalesce(l_result, date '2000-01-01');
 end get_watermark;
@@ -563,21 +700,13 @@ begin
     assert_relation(l_owner, l_target);
 
     begin
-    gv_target_owner := l_owner;
-    gv_target_table := l_target;
-    gv_data_slice := l_slice;
-    acquire_run_lock(gv_target_owner, gv_target_table, gv_data_slice);
-    gv_lookback_hours := nvl(p_lookback_hours, 0);
-    if p_debug then
-        gv_debug := true;
-    else
-        gv_debug := false;
-    end if;
-    gv_batch_no := null;
-    gv_batch_size := null;
-    gv_batch_total := null;
-    gv_commit_batch := true;
-    gv_batches_ready := false;
+    set_target_owner(l_owner);
+    set_target_table(l_target);
+    set_data_slice(l_slice);
+    acquire_run_lock(get_target_owner, get_target_table, get_data_slice);
+    set_lookback_hours(nvl(p_lookback_hours, 0));
+    set_debug(p_debug);
+    clear_batch_state;
 
     delete from dwa_keys_tmp;
     l_rows := sql%rowcount;
@@ -588,9 +717,9 @@ begin
     i_log(
         l_proc_name,
         l_rows,
-        fmt_col('target=' || gv_target_owner || '.' || gv_target_table, c_w_name)
-        || fmt_col('slice=' || gv_data_slice, c_w_slice)
-        || 'lookback_hours=' || fmt_num(gv_lookback_hours)
+        fmt_col('target=' || get_target_owner || '.' || get_target_table, c_w_name)
+        || fmt_col('slice=' || get_data_slice, c_w_slice)
+        || 'lookback_hours=' || fmt_num(get_lookback_hours)
         || ' deleted_temp=' || l_rows
         || ' deleted_batch=' || l_batch_rows
         || ' ' || fmt_num(round(seconds_since(l_started), 3)) || 's'
@@ -599,14 +728,7 @@ exception
     when others then
         i_log(l_proc_name, 0, 'failed ' || sqlerrm);
         rollback;
-        gv_target_owner := null;
-        gv_target_table := null;
-        gv_data_slice := null;
-        gv_batch_no := null;
-        gv_batch_size := null;
-        gv_batch_total := null;
-        gv_commit_batch := true;
-        gv_batches_ready := false;
+        clear_run;
         raise;
     end;
 end initialize;
@@ -643,8 +765,7 @@ begin
         raise_application_error(-20006, 'capture sql is required');
     end if;
 
-    -- Slice is session state. Keep it off the bind list so :since can repeat.
-    l_sql := replace_placeholder(p_sql, ':data_slice', 'pkg_dwa.get_data_slice');
+    l_sql := p_sql;
 
     if placeholder_count(l_sql, ':since') < 1 then
         raise_application_error(-20015, 'capture SQL must contain :since at least once');
@@ -652,13 +773,13 @@ begin
 
     assert_relation(l_source_owner, l_source_table);
 
-    l_lookback := coalesce(p_lookback_hours, gv_lookback_hours, 0);
+    l_lookback := coalesce(p_lookback_hours, get_lookback_hours, 0);
 
     if l_lookback < 0 then
         raise_application_error(-20002, 'lookback_hours must be >= 0');
     end if;
 
-    if gv_batches_ready then
+    if get_batches_ready then
         raise_application_error(-20013, 'capture_delta is closed after prepare_batches until finalize');
     end if;
 
@@ -707,10 +828,15 @@ begin
         from (' || l_sql || ') s';
 
     l_rows := exec_dml_named(
-        l_insert_sql, l_bound, l_source_owner, l_source_table
+        l_insert_sql,
+        l_bound,
+        get_data_slice,
+        placeholder_count(l_sql, ':data_slice') > 0,
+        l_source_owner,
+        l_source_table
     );
 
-    if gv_debug then
+    if get_debug then
         select nvl(sum(cnt), 0),
                min(min_wm),
                max(max_wm),
@@ -736,7 +862,7 @@ begin
         || fmt_col('bound=' || fmt_date(l_bound), c_w_date)
         || fmt_col('inserted=' || l_rows, 20)
         || case
-               when gv_debug then
+               when get_debug then
                    fmt_col('slice_rows=' || l_slice_rows, 22)
                    || fmt_col('slice_pk=' || l_slice_pk, 20)
                    || fmt_col('min=' || fmt_date(l_min), c_w_date)
@@ -792,22 +918,22 @@ begin
     where batch_no is not null
       and rownum = 1;
 
-    if l_assigned > 0 and gv_batch_size is not null and l_batch_size != gv_batch_size then
+    if l_assigned > 0 and get_batch_size is not null and l_batch_size != get_batch_size then
         raise_application_error(
             -20009,
-            'batch_size cannot change while batches are in progress, current=' || gv_batch_size
+            'batch_size cannot change while batches are in progress, current=' || get_batch_size
         );
     end if;
 
-    if l_assigned > 0 and gv_batch_size is not null and l_commit_batch != gv_commit_batch then
+    if l_assigned > 0 and get_batch_size is not null and l_commit_batch != get_commit_batch then
         raise_application_error(-20018, 'p_commit_batch cannot change while batches are in progress');
     end if;
 
     assert_no_open_batch;
 
-    gv_commit_batch := l_commit_batch;
-    gv_batches_ready := true;
-    gv_batch_no := null;
+    set_commit_batch(l_commit_batch);
+    set_batches_ready(true);
+    set_batch_no(null);
 
     if l_key_total = 0 then
         i_log(
@@ -818,7 +944,7 @@ begin
         return;
     end if;
 
-    gv_batch_size := l_batch_size;
+    set_batch_size(l_batch_size);
 
     begin
         if l_assigned = 0 then
@@ -857,7 +983,7 @@ begin
             i_log(
                 l_proc_name,
                 0,
-                'batch numbers already assigned batch_size=' || gv_batch_size
+                'batch numbers already assigned batch_size=' || get_batch_size
                 || case when l_commit_batch then ' commit_batch' else ' no_commit' end
             );
         end if;
@@ -866,7 +992,7 @@ begin
         into l_total
         from dwa_keys_tmp;
 
-        gv_batch_total := l_total;
+        set_batch_total(l_total);
         l_left := unfinished_batches;
 
         if l_left = 0 then
@@ -901,7 +1027,7 @@ function next_batch return boolean is
 begin
     assert_ready;
 
-    if not gv_batches_ready then
+    if not get_batches_ready then
         raise_application_error(-20016, 'Call prepare_batches first');
     end if;
 
@@ -924,13 +1050,13 @@ begin
             raise_application_error(-20011, 'batch ' || l_next || ' has no keys');
         end if;
 
-        gv_batch_no := l_next;
-        l_total := gv_batch_total;
+        set_batch_no(l_next);
+        l_total := get_batch_total;
 
         i_log(
             l_proc_name,
             l_keys,
-            fmt_col('batch ' || gv_batch_no || '/' || l_total, c_w_batch)
+            fmt_col('batch ' || get_batch_no || '/' || l_total, c_w_batch)
             || 'keys=' || l_keys || ' opened'
         );
         return true;
@@ -945,7 +1071,7 @@ procedure finish_batch is
     -- Still the caller's DML row count: this procedure has not executed any SQL yet.
     l_merged    number := sql%rowcount;
     l_proc_name varchar2(64) := get_proc_name('finish_batch');
-    l_batch_no  number := gv_batch_no;
+    l_batch_no  number := get_batch_no;
     l_total     number;
 begin
     assert_ready;
@@ -964,22 +1090,22 @@ begin
             raise_application_error(-20012, 'batch ' || l_batch_no || ' was not marked done');
         end if;
 
-        l_total := gv_batch_total;
+        l_total := get_batch_total;
 
-        if gv_commit_batch then
+        if get_commit_batch then
             commit;
         else
             delete from dwa_batch_tmp;
         end if;
 
-        gv_batch_no := null;
+        set_batch_no(null);
 
         i_log(
             l_proc_name,
             l_merged,
             fmt_col('batch ' || l_batch_no || '/' || l_total, c_w_batch)
             || 'merged=' || l_merged
-            || case when gv_commit_batch then ' committed' else ' uncommitted' end
+            || case when get_commit_batch then ' committed' else ' uncommitted' end
         );
     exception
         when others then
@@ -995,10 +1121,13 @@ procedure finalize is
     l_left       number := 0;
     l_unassigned number := 0;
     l_moved      number := 0;
+    l_owner      varchar2(128) := get_target_owner;
+    l_target     varchar2(128) := get_target_table;
+    l_slice      varchar2(64) := get_data_slice;
 begin
     assert_ready;
 
-    if gv_batches_ready then
+    if get_batches_ready then
         l_left := unfinished_batches;
         select count(*)
         into l_unassigned
@@ -1011,19 +1140,19 @@ begin
        or l_unassigned > 0 then
         raise_application_error(
             -20005,
-            'unfinished batches for ' || gv_target_owner || '.' || gv_target_table
+            'unfinished batches for ' || l_owner || '.' || l_target
             || ' (' || l_left || ' left). Watermark was not moved. '
             || 'Finish the remaining batches before calling finalize.'
         );
     end if;
 
-    gv_batches_ready := false;
+    set_batches_ready(false);
 
     merge into dwa_watermark t
     using (
-        select gv_target_owner as target_owner,
-               gv_target_table as target_table,
-               gv_data_slice as data_slice,
+        select l_owner as target_owner,
+               l_target as target_table,
+               l_slice as data_slice,
                source_owner,
                source_table,
                max(watermark) as watermark
@@ -1051,7 +1180,7 @@ begin
 
     l_moved := sql%rowcount;
 
-    if gv_debug then
+    if get_debug then
         select count(*)
         into l_all_pk
         from (
@@ -1064,20 +1193,14 @@ begin
         l_proc_name,
         l_moved,
         'moved=' || l_moved
-        || case when gv_debug then ' distinct_pk=' || l_all_pk else null end
+        || case when get_debug then ' distinct_pk=' || l_all_pk else null end
         || ' ' || fmt_num(round(seconds_since(l_started), 3)) || 's'
     );
 
     delete from dwa_batch_tmp;
 
     release_run_lock;
-    gv_target_owner := null;
-    gv_target_table := null;
-    gv_data_slice := null;
-    gv_lookback_hours := 0;
-    gv_batch_no := null;
-    gv_batch_size := null;
-    gv_batch_total := null;
+    clear_run;
 exception
     when others then
         i_log(l_proc_name, nvl(l_all_pk, 0), 'failed ' || sqlerrm);
